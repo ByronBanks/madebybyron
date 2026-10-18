@@ -1,6 +1,6 @@
 {
   "menu": {
-    "logo": "made by *byron*",
+    "logo": "made by byron",
     "sticky": true,
     "items": [
       {
@@ -23,7 +23,10 @@
         "label": "Contact",
         "link": "#contact"
       }
-    ]
+    ],
+    "css": {
+      "logoSize": "26"
+    }
   },
   "sections": [
     {
