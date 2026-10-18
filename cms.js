@@ -425,165 +425,271 @@
     } }, addLabel)];
   }
 
-  /* ---------- Page sections: add, move, delete ---------- */
-  const SECTION_FIELDS = {
-    hero: (p) => [
-      field(p + "eyebrow", "Small line above"),
-      field(p + "headline", "Headline", { type: "textarea", hint: RICH_HINT }),
-      field(p + "rotator", "Rotating words after “made by”", { hint: "Comma-separated. Leave empty to hide that line." }),
-      field(p + "intro", "Intro", { type: "textarea" }),
-      h("div", { class: "cms-grid2" }, field(p + "cta", "Button text"), field(p + "ctaLink", "Button link", { hint: "#work, #contact or a URL" })),
-    ],
-    marquee: (p) => [field(p + "items", "Banner words", { type: "textarea", rows: 2, hint: "Comma-separated." })],
-    work: (p) => [
-      field(p + "heading", "Heading", { hint: RICH_HINT }),
-      field(p + "filters", "Category filter buttons", { type: "select", options: [[true, "Show"], [false, "Hide"]], parse: (v) => v === "true" }),
-      h("p", { class: "cms-note" }, "Shows the projects from the Projects list below."),
-    ],
-    services: (p) => [
-      field(p + "heading", "Heading", { hint: RICH_HINT }),
-      listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" }),
-    ],
-    about: (p) => [
-      imageField(p + "portrait", "Portrait"),
-      field(p + "heading", "Heading", { hint: RICH_HINT }),
-      field(p + "lead", "Lead line", { type: "textarea", rows: 2 }),
-      field(p + "bio", "Bio", { type: "textarea", rows: 5 }),
-      field(p + "clients", "Clients", { type: "textarea", rows: 2, hint: "Comma-separated." }),
-    ],
-    contact: (p) => [
-      field(p + "eyebrow", "Small line above"),
-      field(p + "heading", "Big link text", { type: "textarea", hint: RICH_HINT }),
-      field(p + "email", "Email address", { type: "email" }),
-      h("span", { class: "cms-label" }, "Social links"),
-      listEditor(p + "socials", [["label", "Label"], ["url", "Link", { type: "url" }]], "+ Add link", { label: "", url: "" }),
+  /* ---------- Page sections and the parts inside them ---------- */
+  const PART_FIELDS = {
+    eyebrow: (p) => [field(p + "text", "Text")],
+    heading: (p) => [
+      field(p + "text", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
+      field(p + "size", "Size", { type: "select", options: [["xl", "Extra large"], ["l", "Large"], ["m", "Medium"]] }),
+      h("div", { class: "cms-grid2" },
+        field(p + "rotatorPrefix", "Rotating line starts with"),
+        field(p + "rotator", "Rotating words", { hint: "Comma-separated. Empty = no rotating line." })),
     ],
     text: (p) => [
-      field(p + "eyebrow", "Small line above"),
-      field(p + "heading", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
-      field(p + "body", "Text", { type: "textarea", rows: 6, hint: "Leave a blank line between paragraphs." }),
+      field(p + "text", "Text", { type: "textarea", rows: 5, hint: "Blank line = new paragraph. *asterisks* = italic." }),
+      field(p + "style", "Style", { type: "select", options: [["normal", "Normal"], ["large", "Large (lead)"], ["small", "Small"]] }),
+    ],
+    button: (p) => [
+      h("div", { class: "cms-grid2" }, field(p + "text", "Button text"), field(p + "link", "Link", { hint: "#section-id or a URL" })),
+      field(p + "style", "Style", { type: "select", options: [["solid", "Solid"], ["outline", "Outline"]] }),
     ],
     image: (p) => [
       imageField(p + "image", "Image"),
       field(p + "caption", "Caption"),
-      field(p + "width", "Size", { type: "select", options: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["contained", "Page width"], ["full", "Edge to edge"]],
-        value: (v) => (v === "narrow" ? "medium" : v) }),
-    ],
-    split: (p) => [
-      imageField(p + "image", "Image"),
-      h("div", { class: "cms-grid3" },
-        field(p + "side", "Image side", { type: "select", options: [["right", "Right"], ["left", "Left"]] }),
-        field(p + "ratio", "Image size", { type: "select", options: [["third", "1/3"], ["half", "1/2"], ["two-thirds", "2/3"]] }),
-        field(p + "valign", "Line up", { type: "select", options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] })),
-      field(p + "heading", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
-      field(p + "body", "Text", { type: "textarea", rows: 5, hint: "Leave a blank line between paragraphs." }),
-      h("div", { class: "cms-grid2" }, field(p + "cta", "Button text"), field(p + "ctaLink", "Button link")),
+      field(p + "size", "Size", { type: "select", options: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["page", "Page width"], ["full", "Edge to edge"]] }),
     ],
     quote: (p) => [
-      field(p + "quote", "Quote", { type: "textarea", rows: 4 }),
+      field(p + "text", "Quote", { type: "textarea", rows: 3 }),
       h("div", { class: "cms-grid2" }, field(p + "name", "Name"), field(p + "role", "Role / company")),
     ],
-    cta: (p) => [
-      field(p + "heading", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
-      field(p + "text", "Text", { type: "textarea", rows: 2 }),
-      h("div", { class: "cms-grid2" }, field(p + "cta", "Button text"), field(p + "ctaLink", "Button link")),
+    tags: (p) => [field(p + "items", "Tags", { type: "textarea", rows: 2, hint: "Comma-separated." })],
+    links: (p) => [listEditor(p + "items", [["label", "Label"], ["url", "Link", { type: "url" }]], "+ Add link", { label: "", url: "" })],
+    biglink: (p) => [
+      field(p + "text", "Text", { type: "textarea", rows: 2, hint: RICH_HINT }),
+      field(p + "link", "Link", { hint: "mailto:you@example.com, a URL or #section-id" }),
     ],
+    projects: (p) => [
+      field(p + "filters", "Category filter buttons", { type: "select", options: [[true, "Show"], [false, "Hide"]], parse: (v) => v === "true" }),
+      h("p", { class: "cms-note" }, "Shows the projects from the Projects list."),
+    ],
+    services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" })],
+    spacer: (p) => [field(p + "size", "Height", { type: "select", options: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] })],
   };
 
+  const plain = (t) => String(t ?? "").replace(/\*/g, "").replace(/\n/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+  function partPreview(p) {
+    if (p.type === "links" || p.type === "services") return `${(p.items || []).length} item${(p.items || []).length === 1 ? "" : "s"}`;
+    if (p.type === "image") return p.caption || (p.image ? "Image" : "No image yet");
+    if (p.type === "spacer") return { s: "Small", m: "Medium", l: "Large" }[p.size] || "";
+    if (p.type === "projects") return "From the Projects list";
+    return plain(p.text ?? p.items);
+  }
   const sectionTitle = (s) => {
-    const t = s.heading || s.headline || s.quote || s.caption || s.items || "";
-    return String(t).replace(/\*/g, "").replace(/\n/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (s.layout === "banner") return plain(s.items);
+    const first = (s.parts || []).find((p) => p.type === "heading") || (s.parts || [])[0];
+    return first ? partPreview(first) : "Empty";
   };
   const showOnPage = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   // Left / Centre / Right buttons for a section
-  function alignControl(i) {
-    const s = draft.sections[i];
-    const label = s.type === "image" ? "Position" : "Alignment";
-    const group = h("div", { class: "cms-seg", role: "radiogroup", "aria-label": label });
+  function alignControl(s) {
+    const group = h("div", { class: "cms-seg", role: "radiogroup", "aria-label": "Alignment" });
+    const now = () => (["left", "center", "right"].includes(s.align) ? s.align : "left");
     const draw = () => group.replaceChildren(...[["left", "Left", "⇤"], ["center", "Centre", "↔"], ["right", "Right", "⇥"]].map(([v, l, icon]) =>
-      h("button", { type: "button", role: "radio", "aria-checked": String(Site.alignOf(s) === v), class: Site.alignOf(s) === v ? "on" : "",
+      h("button", { type: "button", role: "radio", "aria-checked": String(now() === v), class: now() === v ? "on" : "",
         onclick: () => { s.align = v; draw(); changed(); } }, h("span", { "aria-hidden": "true" }, icon), " ", l)));
     draw();
-    return h("div", { class: "cms-field" }, h("span", {}, label), group);
+    return h("div", { class: "cms-field" }, h("span", {}, "Alignment"), group);
   }
+
+  const openParts = new WeakSet();
+  let dragging = null; // { si, pj } of the part being dragged
 
   function sectionsEditor() {
     const wrap = h("div", { class: "cms-list" });
-    const typeSelect = h("select", {}, Object.entries(Site.types).map(([k, t]) => h("option", { value: k }, t.label)));
+    const presetSelect = h("select", {}, Object.entries(Site.presets).map(([k, t]) => h("option", { value: k }, t.label)));
 
-    function move(i, d) {
+    function moveSection(i, d) {
       const list = draft.sections;
       [list[i], list[i + d]] = [list[i + d], list[i]];
       rebuild(); changed();
       setTimeout(() => showOnPage(list[i + d].id), 60);
     }
-    function remove(i) {
+    function removeSection(i) {
       const s = draft.sections[i];
-      const label = Site.types[s.type]?.label || s.type;
-      if (!confirm(`Delete this ${label} section${sectionTitle(s) ? ` (“${sectionTitle(s)}”)` : ""}?\n\nYou can still press Discard before publishing.`)) return;
+      if (!confirm(`Delete this section${sectionTitle(s) ? ` (“${sectionTitle(s)}”)` : ""}?\n\nYou can still press Discard before publishing.`)) return;
       draft.sections.splice(i, 1);
-      // Drop style changes that only applied inside this section
       for (const sel of Object.keys(draft.styles || {})) if (sel === `#${s.id}` || sel.startsWith(`#${s.id} `)) delete draft.styles[sel];
       rebuild(); changed();
     }
-    function duplicate(i) {
+    function duplicateSection(i) {
       const copy = structuredClone(draft.sections[i]);
-      copy.id = Site.newSectionId(copy.type);
+      copy.id = Site.newSectionId(copy.kind || "section");
       copy.menu = "";
       draft.sections.splice(i + 1, 0, copy);
       openItems.add(copy.id);
       rebuild(); changed();
       setTimeout(() => showOnPage(copy.id), 60);
     }
-    function add() {
-      const type = typeSelect.value;
-      const s = { id: Site.newSectionId(type), type, menu: "", ...structuredClone(Site.types[type].defaults) };
+    function addSection() {
+      const s = Site.makeSection(presetSelect.value);
       draft.sections.push(s);
       openItems.add(s.id);
       rebuild(); changed();
       setTimeout(() => { showOnPage(s.id); wrap.lastElementChild?.scrollIntoView({ block: "nearest" }); }, 60);
     }
 
+    // Move a part within a section, or into another section
+    function movePart(fromS, fromP, toS, toP) {
+      const [moved] = draft.sections[fromS].parts.splice(fromP, 1);
+      if (fromS === toS && toP > fromP) toP--;
+      draft.sections[toS].parts.splice(toP, 0, moved);
+      rebuild(); changed();
+    }
+
+    function partsEditor(s, si) {
+      const box = h("div", { class: "cms-parts" });
+      const typeSelect = h("select", {}, Object.entries(Site.parts).map(([k, t]) => h("option", { value: k }, t.label)));
+
+      s.parts.forEach((p, j) => {
+        const path = `sections.${si}.parts.${j}.`;
+        const label = h("span", { class: "cms-part-preview" }, partPreview(p));
+        const handle = h("span", { class: "cms-handle", title: "Drag to move", "aria-hidden": "true" }, "⠿");
+        const body = h("div", { class: "cms-part-body", hidden: !openParts.has(p) }, PART_FIELDS[p.type]?.(path) || []);
+        const card = h("div", { class: "cms-part" + (openParts.has(p) ? " open" : "") },
+          h("div", { class: "cms-part-head" },
+            handle,
+            h("button", { type: "button", class: "cms-part-title", "aria-expanded": String(openParts.has(p)), onclick: () => {
+              const open = body.hidden;
+              body.hidden = !open;
+              card.classList.toggle("open", open);
+              open ? openParts.add(p) : openParts.delete(p);
+            } }, h("b", {}, Site.parts[p.type]?.label || p.type), label),
+            h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move part up", disabled: j === 0, onclick: () => movePart(si, j, si, j - 1) }, "↑"),
+            h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move part down", disabled: j === s.parts.length - 1, onclick: () => movePart(si, j, si, j + 2) }, "↓"),
+            h("button", { type: "button", class: "cms-icon danger", title: "Remove part", "aria-label": "Remove part", onclick: () => {
+              if (!confirm(`Remove this ${Site.parts[p.type]?.label || "part"}?`)) return;
+              s.parts.splice(j, 1); rebuild(); changed();
+            } }, "✕")),
+          body);
+        card.addEventListener("input", () => (label.textContent = partPreview(p)));
+
+        // Drag by the handle only, so text in the fields can still be selected
+        handle.addEventListener("pointerdown", () => (card.draggable = true));
+        card.addEventListener("dragstart", (e) => {
+          dragging = { si, pj: j };
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", "part");
+          card.classList.add("dragging");
+          document.body.classList.add("cms-dragging");
+        });
+        card.addEventListener("dragend", () => {
+          card.draggable = false;
+          dragging = null;
+          card.classList.remove("dragging");
+          document.body.classList.remove("cms-dragging");
+          document.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+        });
+        card.dataset.index = j;
+        box.append(card);
+      });
+
+      // Drop zone: works for the whole list, including empty sections
+      const dropIndex = (e) => {
+        const cards = [...box.querySelectorAll(":scope > .cms-part")];
+        for (const c of cards) {
+          const r = c.getBoundingClientRect();
+          if (e.clientY < r.top + r.height / 2) return { index: +c.dataset.index, card: c, where: "before" };
+        }
+        const last = cards.at(-1);
+        return { index: cards.length, card: last, where: "after" };
+      };
+      box.addEventListener("dragover", (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        document.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+        const t = dropIndex(e);
+        if (t.card) t.card.classList.add(t.where === "before" ? "drop-before" : "drop-after");
+        else box.classList.add("drop-before");
+      });
+      box.addEventListener("dragleave", (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove("drop-before"); });
+      box.addEventListener("drop", (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        const { si: fromS, pj: fromP } = dragging;
+        movePart(fromS, fromP, si, dropIndex(e).index);
+      });
+
+      if (!s.parts.length) box.append(h("p", { class: "cms-note cms-parts-empty" }, "No parts yet. Add one below, or drag one here from another section."));
+
+      return [
+        h("span", { class: "cms-label" }, "Parts — drag ⠿ to reorder"),
+        box,
+        h("div", { class: "cms-add-part" }, typeSelect,
+          h("button", { type: "button", class: "cms-btn small primary", onclick: () => {
+            const p = Site.makePart(typeSelect.value);
+            s.parts.push(p);
+            openParts.add(p);
+            rebuild(); changed();
+          } }, "+ Add part")),
+      ];
+    }
+
+    function sectionSettings(s, si) {
+      const p = `sections.${si}.`;
+      if (s.layout === "banner") return [field(p + "items", "Banner words", { type: "textarea", rows: 2, hint: "Comma-separated." })];
+      return [
+        alignControl(s),
+        h("div", { class: "cms-grid2" },
+          field(p + "look", "Look", { type: "select", options: [["plain", "Plain"], ["hero", "Hero (extra space)"], ["dark", "Dark"], ["card", "Card"]] }),
+          field(p + "layout", "Layout", { type: "select", options: [["stack", "One column"], ["split", "Image beside"]],
+            onInput: () => { s.side ??= "right"; s.ratio ??= "half"; s.valign ??= "middle"; s.shape ??= "landscape"; s.media ??= ""; rebuild(); } })),
+        s.layout === "split" ? h("div", { class: "cms-subgroup" },
+          imageField(p + "media", "Side image"),
+          h("div", { class: "cms-grid2" },
+            field(p + "side", "Image side", { type: "select", options: [["right", "Right"], ["left", "Left"]] }),
+            field(p + "shape", "Image shape", { type: "select", options: [["landscape", "Landscape"], ["portrait", "Portrait"], ["square", "Square"], ["wide", "Wide"]] })),
+          h("div", { class: "cms-grid2" },
+            field(p + "ratio", "Image size", { type: "select", options: [["third", "1/3"], ["two-fifths", "2/5"], ["half", "1/2"], ["three-fifths", "3/5"], ["two-thirds", "2/3"]] }),
+            field(p + "valign", "Line up", { type: "select", options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] }))) : null,
+        partsEditor(s, si),
+      ];
+    }
+
     function rebuild() {
       const n = draft.sections.length;
+      const scroll = body.scrollTop;
       wrap.replaceChildren(...draft.sections.map((s, i) => {
-        const p = `sections.${i}.`;
-        const type = Site.types[s.type];
+        s.parts ??= [];
         const titleEl = h("span", {}, sectionTitle(s));
+        const kind = Site.presets[s.kind]?.label || (s.layout === "banner" ? "Scrolling banner" : "Section");
         const item = h("details", { class: "cms-item cms-sec", open: openItems.has(s.id) },
           h("summary", {},
             h("span", { class: "cms-sec-num" }, String(i + 1)),
-            h("span", { class: "cms-sec-name" }, h("b", {}, type?.label || s.type), titleEl),
+            h("span", { class: "cms-sec-name" }, h("b", {}, kind), titleEl),
             s.menu ? h("span", { class: "cms-sec-menu", title: "In the top menu" }, s.menu) : null,
             h("span", { class: "cms-sec-moves" },
-              h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move up", disabled: i === 0,
-                onclick: (e) => { e.preventDefault(); move(i, -1); } }, "↑"),
-              h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move down", disabled: i === n - 1,
-                onclick: (e) => { e.preventDefault(); move(i, 1); } }, "↓"))),
+              h("button", { type: "button", class: "cms-icon", title: "Move section up", "aria-label": "Move section up", disabled: i === 0,
+                onclick: (e) => { e.preventDefault(); moveSection(i, -1); } }, "↑"),
+              h("button", { type: "button", class: "cms-icon", title: "Move section down", "aria-label": "Move section down", disabled: i === n - 1,
+                onclick: (e) => { e.preventDefault(); moveSection(i, 1); } }, "↓"))),
           h("div", { class: "cms-section-body" },
-            type && type.align !== null ? alignControl(i) : null,
-            type ? SECTION_FIELDS[s.type]?.(p) : h("p", { class: "cms-note" }, `Unknown section type “${s.type}”.`),
+            sectionSettings(s, i),
             h("div", { class: "cms-subgroup" },
-              field(p + "menu", "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),
+              field(`sections.${i}.menu`, "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),
               h("small", { class: "cms-note" }, "Link to this section with ", h("code", {}, "#" + s.id))),
             h("div", { class: "cms-row" },
-              h("button", { type: "button", class: "cms-btn small", onclick: () => duplicate(i) }, "Duplicate"),
-              h("button", { type: "button", class: "cms-btn small danger", onclick: () => remove(i) }, "Delete section"))));
+              h("button", { type: "button", class: "cms-btn small", onclick: () => duplicateSection(i) }, "Duplicate section"),
+              h("button", { type: "button", class: "cms-btn small danger", onclick: () => removeSection(i) }, "Delete section"))));
         item.addEventListener("input", () => (titleEl.textContent = sectionTitle(draft.sections[i])));
-        item.addEventListener("toggle", () => {
+        item.addEventListener("toggle", (e) => {
+          if (e.target !== item) return;
           if (item.open) { openItems.add(s.id); showOnPage(s.id); } else openItems.delete(s.id);
         });
+        // Dragging a part over a closed section opens it so it can be dropped there
+        item.addEventListener("dragenter", () => { if (dragging && !item.open) { item.open = true; openItems.add(s.id); } });
         return item;
       }));
+      body.scrollTop = scroll;
     }
     rebuild();
 
     return [
       wrap,
       h("div", { class: "cms-add-section" },
-        h("label", { class: "cms-field" }, h("span", {}, "Add a section"), typeSelect),
-        h("button", { type: "button", class: "cms-btn primary", onclick: add }, "+ Add")),
+        h("label", { class: "cms-field" }, h("span", {}, "Add a section"), presetSelect),
+        h("button", { type: "button", class: "cms-btn primary", onclick: addSection }, "+ Add")),
     ];
   }
 
