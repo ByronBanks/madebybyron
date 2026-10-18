@@ -274,3 +274,26 @@ select.insp-input { border-color: var(--line); background: var(--bg); cursor: po
 .insp-change-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .insp-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding-bottom: 10px; }
 .insp-add .insp-input { border-color: var(--line); background: var(--bg); }
+
+/* Page sections list */
+.cms-sec > summary { align-items: center; }
+.cms-sec-num {
+  flex: none; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  font-size: .72rem; font-weight: 700; background: var(--card); border: 1px solid var(--line);
+}
+.cms-sec-name { flex: 1; min-width: 0; display: grid; }
+.cms-sec-name b { font-size: .85rem; }
+.cms-sec-name span { color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cms-sec-menu {
+  flex: none; font-size: .68rem; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--c-dev) 18%, transparent);
+}
+.cms-sec-moves { display: flex; flex: none; }
+.cms-sec-moves .cms-icon { width: 26px; height: 26px; }
+.cms-sec-moves .cms-icon:disabled { opacity: .25; cursor: default; }
+.cms-item > summary span.cms-sec-num, .cms-item > summary span.cms-sec-menu { color: var(--fg); }
+.cms-list-item { position: relative; padding-right: 40px; }
+.cms-list-item > .cms-icon { position: absolute; top: 8px; right: 6px; }
+.cms-add-section { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--line); }
+.cms-add-section select { width: 100%; font: inherit; color: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.cms-note code { font-size: .75rem; }

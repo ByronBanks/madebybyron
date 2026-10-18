@@ -19,10 +19,7 @@
   <header class="nav">
     <a href="#top" class="logo">made by <em>byron</em></a>
     <nav class="nav-links">
-      <a href="#work">Work</a>
-      <a href="#services">Services</a>
-      <a href="#about">About</a>
-      <a href="#contact">Contact</a>
+      <span class="nav-menu" id="navMenu"></span>
       <button class="sign-in" id="signInBtn">Sign in</button>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
         <span class="sun">☀</span><span class="moon">☾</span>
@@ -30,66 +27,8 @@
     </nav>
   </header>
 
-  <main id="top">
-    <!-- Hero -->
-    <section class="hero">
-      <p class="eyebrow" id="heroEyebrow"></p>
-      <h1>
-        <span id="heroHeadline"></span><br>
-        <span class="serif">made by</span> <span class="rotator" id="rotator"></span>.
-      </h1>
-      <div class="hero-foot">
-        <p id="heroIntro"></p>
-        <a href="#work" class="btn" id="heroCta"></a>
-      </div>
-    </section>
-
-    <!-- Marquee -->
-    <div class="marquee" aria-hidden="true">
-      <div class="marquee-track" id="marqueeTrack"></div>
-    </div>
-
-    <!-- Work -->
-    <section class="section" id="work">
-      <div class="section-head">
-        <h2 id="workHeading"></h2>
-        <div class="filters" id="filters" role="tablist">
-          <button class="chip active" data-filter="all">All</button>
-          <button class="chip" data-filter="design">Design</button>
-          <button class="chip" data-filter="photo">Photo &amp; Film</button>
-          <button class="chip" data-filter="dev">Development</button>
-          <button class="chip" data-filter="studio">Studio</button>
-        </div>
-      </div>
-      <div class="grid" id="grid"></div>
-    </section>
-
-    <!-- Services -->
-    <section class="section" id="services">
-      <h2 id="servicesHeading"></h2>
-      <div class="services" id="servicesList"></div>
-    </section>
-
-    <!-- About -->
-    <section class="section about" id="about">
-      <div class="about-portrait" id="aboutPortrait">
-        <span>Your photo here</span>
-      </div>
-      <div>
-        <h2 id="aboutHeading"></h2>
-        <p class="lead" id="aboutLead"></p>
-        <p id="aboutBio"></p>
-        <ul class="clients" id="clients"></ul>
-      </div>
-    </section>
-
-    <!-- Contact -->
-    <section class="contact" id="contact">
-      <p class="eyebrow" id="contactEyebrow"></p>
-      <a href="#" class="big-link" id="contactLink"></a>
-      <div class="socials" id="socials"></div>
-    </section>
-  </main>
+  <!-- Sections are drawn from content.json by script.js -->
+  <main id="top"></main>
 
   <footer class="footer">
     <span>© <span id="year"></span> made by byron</span>
