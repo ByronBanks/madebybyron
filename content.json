@@ -1,0 +1,146 @@
+{
+  "hero": {
+    "eyebrow": "Multidisciplinary creative · Available for projects",
+    "headline": "Brands, images,\nfilms & code —",
+    "rotator": "byron, hand, design, camera, code",
+    "intro": "I design identities, shoot photo and video, and build websites — and run a small studio that brings all of it together.",
+    "cta": "See the work ↓"
+  },
+  "marquee": "Branding, Art direction, Photography, Film, Web design, Development",
+  "work": {
+    "heading": "Selected *work*"
+  },
+  "services": {
+    "heading": "What I *do*",
+    "items": [
+      {
+        "title": "Design & Branding",
+        "text": "Identities, logos, packaging and design systems that give a business a clear voice."
+      },
+      {
+        "title": "Photo & Film",
+        "text": "Campaign, product and portrait photography, plus short films and social content."
+      },
+      {
+        "title": "Web & Development",
+        "text": "Fast, hand-built websites and digital products — designed and coded in one place."
+      },
+      {
+        "title": "Studio",
+        "text": "End-to-end creative for launches and campaigns, with trusted collaborators when needed."
+      }
+    ]
+  },
+  "about": {
+    "heading": "Hello, I'm *Byron*.",
+    "lead": "A designer, photographer and developer working across brand, image and web.",
+    "bio": "Replace this with a short bio: where you're based, how long you've been doing this, who you've worked with, and what kind of projects excite you. Keep it to two or three sentences — the work does the rest.",
+    "portrait": "",
+    "clients": "Client one, Client two, Client three, Client four, Client five"
+  },
+  "contact": {
+    "eyebrow": "Got a project in mind?",
+    "heading": "Let's make\nsomething *good* →",
+    "email": "hello@madebybyron.com",
+    "socials": [
+      {
+        "label": "Instagram",
+        "url": "#"
+      },
+      {
+        "label": "LinkedIn",
+        "url": "#"
+      },
+      {
+        "label": "Vimeo",
+        "url": "#"
+      },
+      {
+        "label": "GitHub",
+        "url": "#"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "id": "p1",
+      "title": "Aurora Coffee",
+      "category": "design",
+      "year": 2026,
+      "summary": "Brand identity & packaging",
+      "description": "A warm, characterful identity for an independent roastery — logo, packaging system and shop signage.",
+      "size": "wide",
+      "image": ""
+    },
+    {
+      "id": "p2",
+      "title": "Northern Light",
+      "category": "photo",
+      "year": 2026,
+      "summary": "Editorial photography",
+      "description": "A winter photo series shot across the Scottish Highlands for a travel magazine feature.",
+      "size": "tall",
+      "image": ""
+    },
+    {
+      "id": "p3",
+      "title": "Fieldnotes App",
+      "category": "dev",
+      "year": 2025,
+      "summary": "Web app design & build",
+      "description": "A note-taking web app for researchers — designed, built and launched in eight weeks.",
+      "size": "",
+      "image": ""
+    },
+    {
+      "id": "p4",
+      "title": "Launch Week",
+      "category": "studio",
+      "year": 2025,
+      "summary": "Campaign — brand, film & web",
+      "description": "A full product launch: campaign identity, a 60-second film, social assets and the launch site.",
+      "size": "",
+      "image": ""
+    },
+    {
+      "id": "p5",
+      "title": "Slow Mornings",
+      "category": "photo",
+      "year": 2025,
+      "summary": "Short film",
+      "description": "A two-minute short film for a lifestyle brand, shot on location over a single weekend.",
+      "size": "",
+      "image": ""
+    },
+    {
+      "id": "p6",
+      "title": "Kiln & Co.",
+      "category": "design",
+      "year": 2024,
+      "summary": "Logo & website design",
+      "description": "Identity refresh and e-commerce site for a ceramics studio.",
+      "size": "tall",
+      "image": ""
+    },
+    {
+      "id": "p7",
+      "title": "Portfolio Engine",
+      "category": "dev",
+      "year": 2024,
+      "summary": "Open-source tooling",
+      "description": "A lightweight static-site toolkit for creatives, used by a few hundred designers.",
+      "size": "wide",
+      "image": ""
+    },
+    {
+      "id": "p8",
+      "title": "Club Season",
+      "category": "studio",
+      "year": 2024,
+      "summary": "Sports club rebrand",
+      "description": "New crest, kit design, matchday photography and a refreshed website for a local football club.",
+      "size": "",
+      "image": ""
+    }
+  ]
+}
