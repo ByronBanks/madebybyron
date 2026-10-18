@@ -9,10 +9,12 @@
       "align": "left",
       "parts": [
         {
+          "id": "put67d0",
           "type": "eyebrow",
           "text": "Multidisciplinary creative · Available for projects"
         },
         {
+          "id": "plxjpo8",
           "type": "heading",
           "text": "Brands\nfilms & code",
           "size": "xl",
@@ -20,11 +22,13 @@
           "rotatorPrefix": "made by"
         },
         {
+          "id": "pmyynuc",
           "type": "text",
           "text": "I design identities, shoot photo and video, and build websites — and run a small studio that brings all of it together.",
           "style": "normal"
         },
         {
+          "id": "p5c141i",
           "type": "button",
           "text": "See the work ↓",
           "link": "#work",
@@ -51,6 +55,7 @@
       "align": "left",
       "parts": [
         {
+          "id": "pjutpof",
           "type": "heading",
           "text": "Selected *work*",
           "size": "l",
@@ -58,6 +63,7 @@
           "rotatorPrefix": "made by"
         },
         {
+          "id": "pr1agjf",
           "type": "projects",
           "filters": true
         }
@@ -72,6 +78,7 @@
       "align": "left",
       "parts": [
         {
+          "id": "put69lz",
           "type": "heading",
           "text": "What I *do*",
           "size": "l",
@@ -79,6 +86,7 @@
           "rotatorPrefix": "made by"
         },
         {
+          "id": "paxdwdp",
           "type": "services",
           "items": [
             {
@@ -115,6 +123,7 @@
       "valign": "middle",
       "parts": [
         {
+          "id": "pejvz2t",
           "type": "heading",
           "text": "Hello, I'm *Byron*.",
           "size": "l",
@@ -122,16 +131,19 @@
           "rotatorPrefix": "made by"
         },
         {
+          "id": "pf85qjg",
           "type": "text",
           "text": "A designer, photographer and developer working across brand, image and web.",
           "style": "large"
         },
         {
+          "id": "ppmqus0",
           "type": "text",
           "text": "Replace this with a short bio: where you're based, how long you've been doing this, who you've worked with, and what kind of projects excite you. Keep it to two or three sentences — the work does the rest.",
           "style": "normal"
         },
         {
+          "id": "ppd1e8n",
           "type": "tags",
           "items": "Client one, Client two, Client three, Client four, Client five"
         }
@@ -146,15 +158,18 @@
       "align": "left",
       "parts": [
         {
+          "id": "p7umfgn",
           "type": "eyebrow",
           "text": "Got a project in mind?"
         },
         {
+          "id": "p3gmxhq",
           "type": "biglink",
           "text": "Let's make\nsomething *good* →",
           "link": "mailto:hello@madebybyron.com"
         },
         {
+          "id": "pek462u",
           "type": "links",
           "items": [
             {

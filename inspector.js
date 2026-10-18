@@ -138,6 +138,15 @@ const Inspector = (() => {
       if (n && pageEls(sel).includes(el)) list.push({ sel, label: `${label} — ${n} item${n === 1 ? "" : "s"}` });
     };
 
+    // Inside a part: target it by the part's id, so the change follows the part if it moves
+    const partEl = el.closest("[data-pid]");
+    if (partEl && el !== partEl) {
+      const pid = `[data-pid="${partEl.dataset.pid}"]`;
+      add(el.parentElement === partEl ? `${pid} > ${own}` : `${pid} ${own}`, "This part");
+    } else if (partEl) {
+      add(`[data-pid="${partEl.dataset.pid}"]`, "This part (its box)");
+    }
+
     // e.g. "#work .card-info h3": this kind of item in this part of the page
     let kind = own;
     if (!el.id && !ownClasses(el).length) {
@@ -317,7 +326,7 @@ const Inspector = (() => {
 
     return h("div", { class: "insp" },
       h("div", { class: "insp-top" },
-        h("button", { type: "button", class: "cms-btn small", onclick: onBack }, "← Back to content"),
+        h("button", { type: "button", class: "cms-btn small", onclick: onBack }, "← Back"),
         copyBtn),
       h("div", { class: "insp-crumbs" },
         crumbs.map((n, i) => [

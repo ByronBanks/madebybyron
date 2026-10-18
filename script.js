@@ -52,14 +52,37 @@ function stylesToCSS(styles = {}) {
     return decls.length ? `${sel} {\n${decls.join("\n")}\n}` : "";
   }).filter(Boolean).join("\n");
 }
-function applyStyles(styles) {
+// Simple style settings stored on sections and parts (colour, size, padding, background)
+const px = (v) => (/^-?\d*\.?\d+$/.test(String(v).trim()) ? `${String(v).trim()}px` : String(v).trim());
+function quickCSS(c) {
+  const out = [];
+  const rule = (sel, decls) => {
+    const d = decls.filter(([, v]) => v !== undefined && v !== "" && SAFE(String(v))).map(([p, v]) => `  ${p}: ${v} !important;`);
+    if (d.length) out.push(`${sel} {\n${d.join("\n")}\n}`);
+  };
+  for (const s of c.sections || []) {
+    const q = s.css || {};
+    rule(`#${s.id}`, [["background", q.background], ["padding-top", q.padY && px(q.padY)], ["padding-bottom", q.padY && px(q.padY)]]);
+    for (const p of s.parts || []) {
+      const k = p.css || {};
+      const sel = `[data-pid="${p.id}"]`;
+      rule(sel, [["padding", k.padding && px(k.padding)]]);
+      rule(`${sel} > *`, [["color", k.color], ["font-size", k.size && px(k.size)]]);
+      if (k.size) rule(`${sel} .quote-text, ${sel} .big-link`, [["font-size", px(k.size)]]);
+    }
+  }
+  return out.join("\n");
+}
+
+// Accepts the whole content (simple settings + CSS edits)
+function applyStyles(c) {
   let tag = document.getElementById("site-style-changes");
   if (!tag) {
     tag = document.createElement("style");
     tag.id = "site-style-changes";
     document.head.append(tag);
   }
-  tag.textContent = stylesToCSS(styles);
+  tag.textContent = quickCSS(c) + "\n" + stylesToCSS(c.styles);
 }
 
 /* ---------- Parts: the building blocks inside a section ---------- */
@@ -138,7 +161,8 @@ const PART_TYPES = {
   },
 };
 
-const part = (type, fields = {}) => ({ type, ...structuredClone(PART_TYPES[type].defaults), ...fields });
+const newPartId = () => "p" + Math.random().toString(36).slice(2, 8);
+const part = (type, fields = {}) => ({ id: newPartId(), type, ...structuredClone(PART_TYPES[type].defaults), ...fields });
 
 /* ---------- Section presets (what "Add a section" offers) ---------- */
 const SECTION_PRESETS = {
@@ -177,6 +201,8 @@ function upgradeContent(c) {
   }
   // v2: each section type had fixed fields → v3: every section is a list of parts
   c.sections = c.sections.map((s) => (Array.isArray(s.parts) ? s : partsFromV2(s)));
+  // Every part needs a stable id so its styles follow it when it moves
+  for (const s of c.sections) for (const p of s.parts) p.id ??= newPartId();
   return c;
 }
 
@@ -278,7 +304,7 @@ function sectionHTML(s) {
     return `<section class="marquee" aria-hidden="true"><div class="marquee-track">${items + items}</div></section>`;
   }
   const parts = (s.parts || []).map((p, i) => PART_TYPES[p.type]
-    ? `<div class="part part-${p.type}" data-part="${i}">${PART_TYPES[p.type].html(p)}</div>` : "").join("");
+    ? `<div class="part part-${p.type}" data-pid="${esc(p.id)}">${PART_TYPES[p.type].html(p)}</div>` : "").join("");
   const cls = `sec look-${look} layout-${layout} align-${pick(s.align, ALIGNS, "left")}`;
   if (layout === "split") {
     return `<section class="${cls} media-${pick(s.side, ["left", "right"], "right")} ratio-${pick(s.ratio, ["third", "two-fifths", "half", "three-fifths", "two-thirds"], "half")} valign-${pick(s.valign, ["top", "middle", "bottom"], "middle")}">
@@ -291,7 +317,7 @@ function sectionHTML(s) {
 
 function render(c) {
   content = upgradeContent(c);
-  applyStyles(c.styles);
+  applyStyles(c);
 
   const main = $("top");
   const rotating = {};
@@ -370,6 +396,7 @@ const Site = {
   presets: SECTION_PRESETS,
   makeSection,
   makePart: part,
+  newPartId,
   newSectionId,
   ready: Store.loadContent().then((c) => { render(c); return c; }),
 };
