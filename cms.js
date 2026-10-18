@@ -76,12 +76,42 @@
   const importInput = h("input", { type: "file", accept: "application/json", hidden: true, onchange: importJSON });
   const saveBtn = h("button", { class: "cms-btn primary", onclick: save }, GITHUB ? "Publish" : "Save");
 
+  /* ---------- Outline view: draws the edge of every box on the page ---------- */
+  const OUTLINE_KEY = "cms-outlines";
+  const outlineSwitch = h("input", { type: "checkbox", role: "switch", onchange: () => setOutlines(outlineSwitch.checked) });
+  const outlineLabel = h("div", { class: "cms-outline-label", hidden: true });
+  document.body.append(outlineLabel);
+
+  function setOutlines(on) {
+    outlineSwitch.checked = on;
+    document.body.classList.toggle("cms-outlines", on && document.body.classList.contains("cms-open"));
+    if (!on) outlineLabel.hidden = true;
+    try { localStorage.setItem(OUTLINE_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+
+  // Name the box under the pointer, e.g. "div.card-info"
+  document.addEventListener("mouseover", (e) => {
+    if (!document.body.classList.contains("cms-outlines")) return;
+    const el = e.target.closest("main *, .nav *, .footer *, .nav, .footer, main");
+    if (!el || el.closest(".cms, .cms-fab, dialog")) { outlineLabel.hidden = true; return; }
+    const cls = [...el.classList].map((c) => "." + c).join("");
+    outlineLabel.textContent = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + cls;
+    const r = el.getBoundingClientRect();
+    outlineLabel.style.left = Math.max(4, r.left) + "px";
+    outlineLabel.style.top = Math.max(4, r.top - 22) + "px";
+    outlineLabel.hidden = false;
+  });
+
   const sidebar = h("aside", { class: "cms", "aria-label": "Site editor" },
     h("div", { class: "cms-head" },
       h("div", {},
         h("strong", {}, "Site editor"),
         h("span", { class: "cms-pill" }, GITHUB ? "Connected to GitHub" : "Preview mode")),
       h("button", { class: "cms-icon", title: "Hide editor", "aria-label": "Hide editor", onclick: () => setCollapsed(true) }, "⟨")),
+    h("label", { class: "cms-toggle" },
+      h("span", {}, "Show outlines"),
+      outlineSwitch,
+      h("i", { "aria-hidden": "true" })),
     body,
     h("div", { class: "cms-foot" },
       h("div", { class: "cms-row" },
@@ -113,11 +143,15 @@
     buildForm();
     document.body.classList.add("cms-open");
     setCollapsed(false);
+    let outlines = false;
+    try { outlines = localStorage.getItem(OUTLINE_KEY) === "1"; } catch (e) {}
+    setOutlines(outlines);
     signInBtn.textContent = "Editor";
   }
 
   function closeEditor() {
-    document.body.classList.remove("cms-open", "cms-collapsed");
+    document.body.classList.remove("cms-open", "cms-collapsed", "cms-outlines");
+    outlineLabel.hidden = true;
     signInBtn.textContent = "Sign in";
   }
 
