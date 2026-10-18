@@ -539,3 +539,25 @@ body.cms-open:not(.cms-collapsed) :is(#signInBtn, #themeToggle) { cursor: pointe
 .cms-dialog-links { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-right: auto; }
 .cms-dialog .cms-field small { color: var(--muted); font-size: .75rem; }
 .cms-dialog .cms-field input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: inherit; }
+
+/* Show outlines + Test, side by side */
+.cms-toggles { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.cms-toggles .cms-toggle { border-bottom: 0; padding: 12px 14px 12px 18px; gap: 8px; }
+.cms-toggles .cms-toggle + .cms-toggle { border-left: 1px solid var(--line); padding-left: 14px; }
+.cms-toggles .cms-toggle:last-child input:checked + i { background: var(--c-dev); }
+
+/* While testing: normal cursor, no editor highlights, a notice at the top of the page */
+body.cms-testing main, body.cms-testing .nav { cursor: auto !important; }
+body.cms-testing main > section.cms-current { box-shadow: none; }
+body.cms-testing main .part.cms-current-part { outline: 0; }
+body.cms-testing .box-empty { display: none !important; }
+.cms-test-notice {
+  position: fixed; top: 84px; left: calc(50% + var(--cms-w) / 2); transform: translateX(-50%); z-index: 80; white-space: nowrap;
+  display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: 999px;
+  background: var(--c-dev); color: #fff; font-size: .85rem; font-weight: 600; box-shadow: 0 8px 24px rgb(0 0 0 / .2);
+}
+.cms-test-notice[hidden] { display: none; }
+.cms-test-notice button { padding: 4px 10px; border-radius: 999px; background: rgb(255 255 255 / .2); color: #fff; font-weight: 700; }
+.cms-test-notice button:hover { background: rgb(255 255 255 / .32); }
+body.cms-collapsed .cms-test-notice { left: 50%; }
+@media (max-width: 800px) { .cms-test-notice { left: 50%; top: auto; bottom: 70px; } }

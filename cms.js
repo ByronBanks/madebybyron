@@ -184,6 +184,12 @@
 
   const OUTLINE_KEY = "cms-outlines";
   const outlineSwitch = h("input", { type: "checkbox", role: "switch", onchange: () => setOutlines(outlineSwitch.checked) });
+  // Test: use the page like a visitor (links, pop-ups, filters) without closing the editor
+  const testSwitch = h("input", { type: "checkbox", role: "switch", onchange: () => setTesting(testSwitch.checked) });
+  const testNotice = h("div", { class: "cms-test-notice", role: "status", hidden: true },
+    h("span", { title: "Links, pop-ups and filters work like the live site" }, "Testing"),
+    h("button", { type: "button", onclick: () => setTesting(false) }, "Back to editing"));
+  document.body.append(testNotice);
   const hoverLabel = h("div", { class: "cms-outline-label", hidden: true });
   document.body.append(hoverLabel);
 
@@ -193,10 +199,15 @@
         h("strong", {}, "Site editor"),
         h("span", { class: "cms-pill" }, MODE === "server" ? "Signed in" : MODE === "github" ? "Connected to GitHub" : "Preview mode")),
       h("button", { class: "cms-icon", title: "Hide editor (use the page normally)", "aria-label": "Hide editor", onclick: () => setCollapsed(true) }, "⟨")),
-    h("label", { class: "cms-toggle", title: "Draw the edge of every box on the page (a visual guide only)." },
-      h("span", {}, "Show outlines"),
-      outlineSwitch,
-      h("i", { "aria-hidden": "true" })),
+    h("div", { class: "cms-toggles" },
+      h("label", { class: "cms-toggle", title: "Draw the edge of every box on the page (a visual guide only)." },
+        h("span", {}, "Show outlines"),
+        outlineSwitch,
+        h("i", { "aria-hidden": "true" })),
+      h("label", { class: "cms-toggle", title: "Use the page like a visitor: links, pop-ups and filters work, and clicks don't select anything." },
+        h("span", {}, "Test"),
+        testSwitch,
+        h("i", { "aria-hidden": "true" }))),
     overviewView,
     sectionView,
     inspectorView,
@@ -227,7 +238,17 @@
   const fab = h("button", { class: "cms-fab", onclick: () => setCollapsed(false) }, "✎ Edit site");
   document.body.append(sidebar, fab);
 
-  const editing = () => document.body.classList.contains("cms-open") && !document.body.classList.contains("cms-collapsed");
+  // "Editing" = the editor is open, not hidden, and not in Test mode (then the page behaves normally)
+  const editing = () => document.body.classList.contains("cms-open") && !document.body.classList.contains("cms-collapsed") && !testSwitch.checked;
+  function setTesting(on) {
+    testSwitch.checked = on;
+    document.body.classList.toggle("cms-testing", on);
+    testNotice.hidden = !on;
+    // Sit just under the menu bar, however tall it is
+    if (on) testNotice.style.top = Math.max(12, document.querySelector(".nav").getBoundingClientRect().bottom + 10) + "px";
+    if (on) { clearHover(); if (!menu.hidden) closeMenu(); }
+    markDraggable();
+  }
   function setCollapsed(c) {
     document.body.classList.toggle("cms-collapsed", c);
     if (c) clearHover();
@@ -260,6 +281,7 @@
 
   function closeEditor() {
     document.body.classList.remove("cms-open", "cms-collapsed", "cms-outlines");
+    setTesting(false);
     markDraggable();
     clearHover();
     current = { section: null, part: null };
