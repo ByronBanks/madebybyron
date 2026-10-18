@@ -84,6 +84,8 @@
   const inspectorView = h("div", { class: "cms-body cms-inspector", hidden: true });
   const importInput = h("input", { type: "file", accept: "application/json", hidden: true, onchange: importJSON });
   const saveBtn = h("button", { class: "cms-btn primary", onclick: save }, GITHUB ? "Publish" : "Save");
+  const undoBtn = h("button", { type: "button", class: "cms-icon cms-hist", title: "Undo (⌘Z)", "aria-label": "Undo", disabled: true, onclick: () => historyUndo() }, "↶");
+  const redoBtn = h("button", { type: "button", class: "cms-icon cms-hist", title: "Redo (⇧⌘Z)", "aria-label": "Redo", disabled: true, onclick: () => historyRedo() }, "↷");
 
   const OUTLINE_KEY = "cms-outlines";
   const outlineSwitch = h("input", { type: "checkbox", role: "switch", onchange: () => setOutlines(outlineSwitch.checked) });
@@ -107,6 +109,7 @@
       h("div", { class: "cms-row" },
         status,
         h("div", { class: "cms-actions" },
+          undoBtn, redoBtn,
           h("button", { class: "cms-btn", onclick: discard }, "Discard"),
           saveBtn)),
       h("div", { class: "cms-row cms-more" },
@@ -148,6 +151,7 @@
       saved = clone(current);
       draft = clone(current);
       renderPage();
+      resetHistory();
     }
     document.body.classList.add("cms-open");
     setCollapsed(false);
@@ -167,26 +171,101 @@
     signInBtn.textContent = "Sign in";
   }
 
-  /* ---------- Undo bar: deletes happen straight away, with a few seconds to undo ---------- */
-  const toast = h("div", { class: "cms-toast", role: "status", hidden: true });
-  document.body.append(toast);
-  let undoSnapshot = null;
-  let toastTimer = 0;
-  function deleted(label, snapshot) {
-    undoSnapshot = snapshot;
-    toast.replaceChildren(h("span", {}, `Deleted ${label}`), h("button", { type: "button", onclick: undoDelete }, "Undo"));
-    toast.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.hidden = true; undoSnapshot = null; }, 7000);
+  /* ---------- Undo / redo history (⌘Z, ⇧⌘Z) ----------
+     Each step stores the whole draft as text. Uploaded images (large data URLs) are kept
+     once in a shared pool and referenced from each step, so a step stays ~20–30 KB. */
+  const MAX_STEPS = 500;
+  const imagePool = new Map(); // data URL → index
+  const imageList = [];
+  const IMG = "\u0000img:";
+  const pack = (obj) => JSON.stringify(obj, (k, v) => {
+    if (typeof v !== "string" || v.length < 512 || !v.startsWith("data:")) return v;
+    if (!imagePool.has(v)) { imagePool.set(v, imageList.length); imageList.push(v); }
+    return IMG + imagePool.get(v);
+  });
+  const unpack = (text) => JSON.parse(text, (k, v) => (typeof v === "string" && v.startsWith(IMG) ? imageList[+v.slice(IMG.length)] : v));
+
+  let undoStack = [];
+  let redoStack = [];
+  let lastState = null; // the draft as of the last recorded step
+  let commitTimer = 0;
+
+  function resetHistory() {
+    clearTimeout(commitTimer);
+    undoStack = [];
+    redoStack = [];
+    lastState = draft ? pack(draft) : null;
+    updateHistoryButtons();
   }
-  function undoDelete() {
-    if (!undoSnapshot) return;
-    draft = undoSnapshot;
-    undoSnapshot = null;
-    toast.hidden = true;
-    setDirty(true);
+  // Record a step if the draft changed since the last one
+  function commit() {
+    clearTimeout(commitTimer);
+    commitTimer = 0;
+    if (!draft) return;
+    const now = pack(draft);
+    if (now === lastState) return;
+    if (lastState !== null) {
+      undoStack.push(lastState);
+      if (undoStack.length > MAX_STEPS) undoStack.shift();
+    }
+    redoStack = [];
+    lastState = now;
+    updateHistoryButtons();
+  }
+  // Typing, sliders and colour pickers are grouped into one step after a short pause
+  function noteChange(grouped = false) {
+    if (grouped) { clearTimeout(commitTimer); commitTimer = setTimeout(commit, 700); }
+    else commit();
+  }
+  function restore(state) {
+    const focusedPath = document.activeElement?.closest?.(".cms") ? document.activeElement.dataset.path : null;
+    draft = unpack(state);
+    lastState = state;
     renderPage();
     rebuildView();
+    setDirty(pack(draft) !== pack(saved));
+    updateHistoryButtons();
+    if (focusedPath) sidebar.querySelector(`[data-path="${CSS.escape(focusedPath)}"]`)?.focus({ preventScroll: true });
+  }
+  function historyUndo() {
+    if (!draft) return;
+    commit();
+    if (!undoStack.length) return;
+    redoStack.push(lastState);
+    toast.hidden = true;
+    restore(undoStack.pop());
+  }
+  function historyRedo() {
+    if (!draft) return;
+    commit();
+    if (!redoStack.length) return;
+    undoStack.push(lastState);
+    restore(redoStack.pop());
+  }
+  function updateHistoryButtons() {
+    undoBtn.disabled = !undoStack.length && !commitTimer;
+    redoBtn.disabled = !redoStack.length;
+    undoBtn.title = `Undo (⌘Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? "" : "s"}` : ""}`;
+  }
+
+  // ⌘Z / Ctrl+Z undo · ⇧⌘Z / Ctrl+Y redo — anywhere while the editor is open
+  document.addEventListener("keydown", (e) => {
+    if (!document.body.classList.contains("cms-open") || signInDialog.open) return;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "z" && !e.shiftKey) { e.preventDefault(); historyUndo(); }
+    else if ((k === "z" && e.shiftKey) || (k === "y" && e.ctrlKey)) { e.preventDefault(); historyRedo(); }
+  }, true);
+
+  /* ---------- "Deleted … · Undo" bar ---------- */
+  const toast = h("div", { class: "cms-toast", role: "status", hidden: true });
+  document.body.append(toast);
+  let toastTimer = 0;
+  function deleted(label) {
+    toast.replaceChildren(h("span", {}, `Deleted ${label}`), h("button", { type: "button", onclick: historyUndo }, "Undo"), h("small", {}, "⌘Z"));
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast.hidden = true), 7000);
   }
 
   /* ---------- Views ---------- */
@@ -436,15 +515,17 @@
   function stylesChanged(rerender) {
     setDirty(true);
     Site.applyStyles(draft);
+    noteChange(!rerender);
     if (rerender && view === "inspector") renderInspector();
   }
 
   /* ---------- Change tracking ---------- */
   let timer = 0;
-  function changed() {
+  function changed({ grouped = false } = {}) {
     setDirty(true);
     clearTimeout(timer);
     timer = setTimeout(renderPage, 40);
+    noteChange(grouped);
   }
   function setDirty(d, msg) {
     dirty = d;
@@ -478,6 +559,7 @@
     renderPage();
     setDirty(false);
     rebuildView();
+    commit(); // Discard is a step too, so ⌘Z brings your changes back
   }
   async function signOut() {
     if (dirty && !confirm("Sign out and lose unsaved changes?")) return;
@@ -486,6 +568,7 @@
     setDirty(false);
     await Store.signOut();
     saved = draft = null;
+    resetHistory();
     closeEditor();
   }
   function exportJSON() {
@@ -518,10 +601,11 @@
     else if (type === "select") input = h("select", {}, options.map(([v, l]) => h("option", { value: String(v), selected: String(v) === String(value) }, l)));
     else input = h("input", { type, value });
     if (type === "textarea") input.value = value;
+    input.dataset.path = path;
     input.addEventListener("input", () => {
       setPath(draft, path, opts.parse ? opts.parse(input.value) : type === "number" ? Number(input.value) : input.value);
       opts.onInput?.();
-      changed();
+      changed({ grouped: type !== "select" });
     });
     return h("label", { class: "cms-field" }, h("span", {}, label), input, hint && h("small", {}, hint));
   }
@@ -586,8 +670,7 @@
             h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
             h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move down", disabled: i === items.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
             h("button", { type: "button", class: "cms-icon danger", title: "Remove", "aria-label": "Remove", onclick: stop(() => {
-              const snap = clone(draft);
-              setTimeout(() => deleted(`“${titleOf(it)}”`, snap));
+              setTimeout(() => deleted(`“${titleOf(it)}”`));
               getPath(draft, path).splice(i, 1);
               if (openListItem[path] === i) delete openListItem[path];
               rebuild(); changed();
@@ -667,6 +750,7 @@
     } else setPath(draft, path, value);
     setDirty(true);
     Site.applyStyles(draft);
+    noteChange(true);
   }
   const isSet = (path) => { const v = getPath(draft, path); return v !== undefined && v !== null && v !== ""; };
 
@@ -960,9 +1044,8 @@
             h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move project up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
             h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move project down", disabled: i === draft.projects.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
             h("button", { type: "button", class: "cms-icon danger", title: "Delete project", "aria-label": "Delete project", onclick: stop(() => {
-              const snap = clone(draft);
               draft.projects.splice(i, 1); rebuild(); changed();
-              deleted(`“${p.title || "Untitled"}”`, snap);
+              deleted(`“${p.title || "Untitled"}”`);
             }) }, "✕")),
           h("div", { class: "cms-section-body" },
             imageField(`projects.${i}.image`, "Image"),
@@ -1027,6 +1110,7 @@
       if (!prop || !Object.keys(draft.styles[sel]).length) delete draft.styles[sel];
       setDirty(true);
       Site.applyStyles(draft);
+      noteChange();
       buildOverview();
     };
     return [
@@ -1042,6 +1126,7 @@
         draft.styles = {};
         setDirty(true);
         Site.applyStyles(draft);
+        noteChange();
         buildOverview();
       } }, "Undo all CSS edits"),
     ];
@@ -1204,13 +1289,12 @@
   }
   function removeSection(i) {
     const s = draft.sections[i];
-    const snap = clone(draft);
     draft.sections.splice(i, 1);
     for (const sel of Object.keys(draft.styles || {})) if (sel === `#${s.id}` || sel.startsWith(`#${s.id} `)) delete draft.styles[sel];
     for (const p of s.parts || []) dropStylesFor(p);
     changed();
     showOverview();
-    deleted(`the ${sectionKind(s)} section`, snap);
+    deleted(`the ${sectionKind(s)} section`);
   }
 
   // Simple table editor: a grid of cells plus add/remove rows and columns
@@ -1305,12 +1389,11 @@
           h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move part up", disabled: j === 0, onclick: () => movePart(j, j - 1) }, "↑"),
           h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move part down", disabled: j === list.length - 1, onclick: () => movePart(j, j + 2) }, "↓"),
           h("button", { type: "button", class: "cms-icon danger", title: "Delete part", "aria-label": "Delete part", onclick: () => {
-            const snap = clone(draft);
             list.splice(j, 1);
             dropStylesFor(part);
             if (current.part === part.id) current.part = null;
             refresh();
-            deleted(Site.parts[part.type]?.label || "part", snap);
+            deleted(Site.parts[part.type]?.label || "part");
           } }, "✕")),
         body);
       card.addEventListener("input", (e) => { if (e.target.closest(".cms-part") === card) label.textContent = partPreview(part); });
@@ -1379,33 +1462,30 @@
   function deletePart(pid) {
     const f = findPart(pid);
     if (!f) return;
-    const snap = clone(draft);
     f.list.splice(f.j, 1);
     dropStylesFor(f.part);
     if (current.part === pid) current.part = null;
     selectedItem = null;
     afterMenu(f.section.id);
-    deleted(Site.parts[f.part.type]?.label || "part", snap);
+    deleted(Site.parts[f.part.type]?.label || "part");
   }
   function deleteProject(id) {
     const i = draft.projects.findIndex((p) => p.id === id);
     if (i < 0) return;
-    const snap = clone(draft);
     const [gone] = draft.projects.splice(i, 1);
     selectedItem = null;
     afterMenu(current.section || draft.sections[0].id, current.part);
-    deleted(`“${gone.title || "Untitled"}”`, snap);
+    deleted(`“${gone.title || "Untitled"}”`);
   }
   function deleteListItem(pid, iid) {
     const f = findPart(pid);
     const items = f?.part.items;
     const i = items?.findIndex((it) => it.id === iid) ?? -1;
     if (i < 0) return;
-    const snap = clone(draft);
     const [gone] = items.splice(i, 1);
     selectedItem = null;
     afterMenu(f.section.id, pid);
-    deleted(`“${gone.title || gone.label || "item"}”`, snap);
+    deleted(`“${gone.title || gone.label || "item"}”`);
   }
 
   // Click something on the page, then press Delete (or Backspace) to remove it

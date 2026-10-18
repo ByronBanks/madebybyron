@@ -513,3 +513,10 @@ main :is(.card, .service).page-drop-after { box-shadow: 6px 0 0 -2px #2f6bff; }
 .cms-toast button { font-weight: 700; color: #9fd3ff; padding: 4px 8px; border-radius: 6px; }
 .cms-toast button:hover { background: rgb(255 255 255 / .1); }
 body.cms-open:not(.cms-collapsed) .cms-toast { left: calc(50% + var(--cms-w) / 2); }
+
+/* Undo / redo buttons */
+.cms-actions { align-items: center; }
+.cms-hist { width: 30px; height: 32px; font-size: 17px; border: 1px solid var(--line); background: var(--bg); }
+.cms-hist:disabled { opacity: .3; cursor: default; }
+.cms-hist:not(:disabled):hover { border-color: var(--fg); }
+.cms-toast small { opacity: .5; font-size: .75rem; margin-left: -8px; }
