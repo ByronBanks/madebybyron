@@ -96,7 +96,7 @@
         h("strong", {}, "Site editor"),
         h("span", { class: "cms-pill" }, GITHUB ? "Connected to GitHub" : "Preview mode")),
       h("button", { class: "cms-icon", title: "Hide editor (use the page normally)", "aria-label": "Hide editor", onclick: () => setCollapsed(true) }, "⟨")),
-    h("label", { class: "cms-toggle", title: "Show the edge of every box. Clicking then opens the CSS of exactly what you click." },
+    h("label", { class: "cms-toggle", title: "Draw the edge of every box on the page (a visual guide only)." },
       h("span", {}, "Show outlines"),
       outlineSwitch,
       h("i", { "aria-hidden": "true" })),
@@ -188,6 +188,7 @@
     setCollapsed(false);
     if (changedSection) sectionView.scrollTop = 0;
     if (partId) sectionView.querySelector(`[data-card="${partId}"]`)?.scrollIntoView({ block: "nearest" });
+    revealFocusItem();
     if (scrollPage && changedSection) document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -210,6 +211,8 @@
 
   function describeHover(el) {
     const sec = el.closest("main > section");
+    if (el.matches(".card")) return `Project · ${draft?.projects.find((p) => p.id === el.dataset.project)?.title || ""}`;
+    if (el.matches(".service")) return `Service · ${el.querySelector("h3")?.textContent || ""}`;
     const part = el.closest(".part");
     const secLabel = sectionLabel(draft?.sections.find((s) => s.id === sec?.id));
     if (part) {
@@ -227,13 +230,13 @@
   }
   document.addEventListener("mouseover", (e) => {
     if (!editing() || !inPage(e.target)) return clearHover();
-    // With outlines on: name the exact box. Otherwise: the part or section a click would open.
-    const el = outlinesOn() ? e.target : (e.target.closest(".part") || e.target.closest("main > section"));
+    // Highlight what a click would open: a project, a service, a part or the section
+    const el = e.target.closest(".card, .service") || e.target.closest(".part") || e.target.closest("main > section");
     if (!el || el === hovered) return;
     clearHover();
     hovered = el;
-    if (!outlinesOn()) el.classList.add("cms-hover");
-    hoverLabel.textContent = outlinesOn() ? Inspector.describe(el) : describeHover(el);
+    el.classList.add("cms-hover");
+    hoverLabel.textContent = describeHover(el);
     const r = el.getBoundingClientRect();
     hoverLabel.style.left = Math.max(4, r.left) + "px";
     hoverLabel.style.top = Math.max(4, r.top - 22) + "px";
@@ -246,9 +249,13 @@
     if (!editing() || !inPage(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
-    if (outlinesOn()) return inspect(e.target, "section");
     const sec = e.target.closest("main > section");
     if (!sec) return;
+    const card = e.target.closest(".card");
+    const service = e.target.closest(".service");
+    focusItem = card ? { project: card.dataset.project }
+      : service ? { item: [...service.parentElement.children].indexOf(service) }
+      : null;
     showSection(sec.id, e.target.closest(".part")?.dataset.pid || null, { scrollPage: false });
   }, true);
 
@@ -444,7 +451,7 @@
     function rebuild() {
       const items = getPath(draft, path) || [];
       wrap.replaceChildren(...items.map((_, i) =>
-        h("div", { class: "cms-subgroup cms-list-item" },
+        h("div", { class: "cms-subgroup cms-list-item", "data-item": i },
           fields.map(([key, label, opts]) => field(`${path}.${i}.${key}`, label, opts)),
           h("button", { type: "button", class: "cms-icon", title: "Remove", "aria-label": "Remove", onclick: () => {
             getPath(draft, path).splice(i, 1); rebuild(); changed();
@@ -559,7 +566,8 @@
     ],
     projects: (p) => [
       field(p + "filters", "Category filter buttons", { type: "select", options: [[true, "Show"], [false, "Hide"]], parse: (v) => v === "true" }),
-      h("p", { class: "cms-note" }, "Shows the projects from the Projects list (All sections → Projects)."),
+      h("span", { class: "cms-label" }, "Projects"),
+      projectsEditor(),
     ],
     services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" })],
     spacer: (p) => [field(p + "size", "Height", { type: "select", options: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] })],
@@ -644,6 +652,11 @@
 
   function projectsEditor() {
     const wrap = h("div", { class: "cms-list" });
+    // A project clicked on the page opens in the list
+    if (focusItem?.project) {
+      const fp = draft.projects.find((x) => x.id === focusItem.project);
+      if (fp) Object.defineProperty(fp, "_open", { value: true, enumerable: false, writable: true, configurable: true });
+    }
     const move = (i, d) => {
       const p = draft.projects;
       [p[i], p[i + d]] = [p[i + d], p[i]];
@@ -653,7 +666,7 @@
       wrap.replaceChildren(...draft.projects.map((p, i) => {
         const summary = h("summary", {}, h("b", {}, p.title || "Untitled"), h("span", {}, CATEGORIES.find((c) => c[0] === p.category)?.[1]));
         const refreshSummary = () => { summary.firstChild.textContent = draft.projects[i].title || "Untitled"; summary.lastChild.textContent = CATEGORIES.find((c) => c[0] === draft.projects[i].category)?.[1]; };
-        const item = h("details", { class: "cms-item", open: p._open },
+        const item = h("details", { class: "cms-item", open: p._open, "data-project": p.id },
           summary,
           h("div", { class: "cms-section-body" },
             imageField(`projects.${i}.image`, "Image"),
@@ -731,6 +744,21 @@
   }
 
   let dragging = null; // index of the part being dragged
+  let focusItem = null; // a project or list item clicked on the page
+
+  function revealFocusItem() {
+    if (!focusItem) return;
+    const card = sectionView.querySelector(`[data-card="${current.part}"]`);
+    const target = focusItem.project != null
+      ? sectionView.querySelector(`[data-project="${focusItem.project}"]`)
+      : card?.querySelector(`.cms-list-item[data-item="${focusItem.item}"]`);
+    focusItem = null;
+    if (!target) return;
+    sectionView.querySelectorAll(".cms-focus").forEach((x) => x.classList.remove("cms-focus"));
+    target.classList.add("cms-focus");
+    target.scrollIntoView({ block: "center" });
+    target.querySelector('input:not([type="file"]):not([type="color"]), textarea')?.focus({ preventScroll: true });
+  }
 
   function buildSectionView() {
     const si = draft.sections.findIndex((s) => s.id === current.section);

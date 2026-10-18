@@ -278,6 +278,7 @@ function renderGrid(holder) {
     if (filter !== "all" && p.category !== filter) return;
     const card = document.createElement("button");
     card.className = `card ${p.size || ""}`;
+    card.dataset.project = p.id;
     card.style.setProperty("--c", `var(--c-${p.category})`);
     card.innerHTML = `
       <div class="card-art"></div>

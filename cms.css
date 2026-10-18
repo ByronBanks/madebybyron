@@ -396,3 +396,7 @@ body.cms-collapsed main > section.cms-current { box-shadow: none; }
 .cms-quick-row small { color: var(--muted); font-weight: 500; }
 .cms-quick .insp-color { width: 30px; height: 28px; }
 .cms-move-to select { width: 100%; font: inherit; font-size: .85rem; color: inherit; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+
+/* The project or list item clicked on the page */
+.cms-focus { box-shadow: 0 0 0 2px #2f6bff; border-radius: 10px; }
+main .card.cms-hover, main .service.cms-hover { outline-offset: 2px; }
