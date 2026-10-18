@@ -53,6 +53,9 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .logo { font-weight: 800; font-size: 1.15rem; letter-spacing: -.02em; }
 .logo :is(em, .serif) { font-family: var(--serif); font-weight: 400; font-size: 1.17em; }
 .nav.nav-static { position: relative; }
+.logo { display: inline-flex; align-items: center; gap: 10px; }
+.logo[hidden] { display: none; }
+.logo-img { display: block; width: auto; max-width: min(240px, 50vw); object-fit: contain; }
 .nav-links { display: flex; gap: clamp(12px, 2.5vw, 32px); align-items: center; font-weight: 500; font-size: .95rem; }
 .nav-links a { position: relative; }
 .nav-links a::after {
@@ -119,6 +122,8 @@ main > section { scroll-margin-top: 72px; }
   background: linear-gradient(90deg, var(--c-design), var(--c-studio), var(--c-dev), var(--c-photo));
   -webkit-background-clip: text; background-clip: text; color: transparent;
   transition: opacity .25s, transform .25s;
+  /* Room for letters that drop below the line (g, y, p), without moving the layout */
+  padding: 0 .04em .2em; margin: 0 -.04em -.2em;
 }
 .rotator.out { opacity: 0; transform: translateY(.2em); }
 

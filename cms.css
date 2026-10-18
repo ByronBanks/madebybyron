@@ -526,3 +526,8 @@ body.cms-open:not(.cms-collapsed) .nav { cursor: pointer; }
 body.cms-open:not(.cms-collapsed) :is(#signInBtn, #themeToggle) { cursor: pointer; }
 .nav.cms-hover, .nav .cms-hover { outline: 2px dashed rgb(47 107 255 / .7); outline-offset: 3px; border-radius: 4px; }
 .nav.cms-hover { outline-offset: -4px; }
+
+/* Logo choice (Text / Image / Image + text / None) */
+.cms-seg4 { grid-template-columns: repeat(4, 1fr); }
+.cms-seg4 button { font-size: .75rem; padding: 6px 2px; }
+.cms-logo-edit { gap: 12px; }

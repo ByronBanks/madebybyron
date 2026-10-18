@@ -981,7 +981,7 @@
       h("option", { value: "#top" }, "Top of the page"));
     return [
       links,
-      field("menu.logo", "Logo text", { hint: "Wrap words in *asterisks* for the italic serif, e.g. made by *byron*" }),
+      logoEditor(),
       h("span", { class: "cms-label" }, "Menu items — drag ⠿ to reorder"),
       listEditor("menu.items", [
         ["label", "Label"],
@@ -992,6 +992,26 @@
       styleEditor("menu.css", { box: ".nav", textSel: ".nav .nav-links a", text: true, size: false,
         sizes: [["logoSize", "Logo size", ".logo"], ["linkSize", "Link size", ".nav-links a"]] }),
     ];
+  }
+
+  // Logo: text, image (SVG/PNG/JPG), image + text, or none
+  function logoEditor() {
+    const m = draft.menu;
+    const type = ["text", "image", "both", "none"].includes(m.logoType) ? m.logoType : "text";
+    const group = h("div", { class: "cms-seg cms-seg4", role: "radiogroup", "aria-label": "Logo" },
+      [["text", "Text"], ["image", "Image"], ["both", "Image + text"], ["none", "None"]].map(([v, l]) =>
+        h("button", { type: "button", role: "radio", "aria-checked": String(type === v), class: type === v ? "on" : "",
+          onclick: () => { m.logoType = v; changed(); buildOverview(); } }, l)));
+    return h("div", { class: "cms-subgroup cms-logo-edit" },
+      h("div", { class: "cms-field" }, h("span", {}, "Logo"), group),
+      type === "image" || type === "both" ? [
+        imageField("menu.logoImage", "Logo image — SVG, PNG, JPG or WebP"),
+        h("small", { class: "cms-note" }, "SVG stays sharp at any size. PNG/WebP keep a transparent background."),
+      ] : null,
+      type !== "none" ? field("menu.logo", type === "image" ? "Description (for screen readers and search)" : "Logo text",
+        { hint: type === "image" ? "Not shown on the page while the image is there." : "Wrap words in *asterisks* for the italic serif, e.g. made by *byron*" }) : null,
+      type === "image" || type === "both" ? field("menu.logoHeight", "Logo height (px)", { parse: (v) => v.replace(/[^0-9]/g, ""), hint: "Empty = 32" }) : null,
+      type === "none" ? h("small", { class: "cms-note" }, "No logo is shown. Choose Text or Image to bring it back.") : null);
   }
 
   // Clicking the menu bar on the page opens this group (and the clicked item)

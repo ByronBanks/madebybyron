@@ -26,7 +26,25 @@ const Store = (() => {
   }
 
   // Shrink uploads so they're quick to load and light in the repo
+  // SVGs are kept as vector files, with anything that could run code removed
+  // (scripts, event handlers, javascript: links, embedded HTML)
+  async function cleanSvg(file) {
+    const doc = new DOMParser().parseFromString(await file.text(), "image/svg+xml");
+    if (doc.querySelector("parsererror") || doc.documentElement.nodeName.toLowerCase() !== "svg") throw new Error("That SVG file couldn't be read.");
+    doc.querySelectorAll("script, foreignObject, iframe, object, embed").forEach((el) => el.remove());
+    for (const el of doc.querySelectorAll("*")) {
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value.trim().toLowerCase();
+        if (name.startsWith("on") || ((name === "href" || name.endsWith(":href")) && !value.startsWith("#") && !value.startsWith("data:image/"))) el.removeAttribute(attr.name);
+      }
+    }
+    const text = new XMLSerializer().serializeToString(doc);
+    return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(text)));
+  }
+
   async function resizeImage(file, max = 1800, quality = 0.85) {
+    if (file.type === "image/svg+xml") return cleanSvg(file);
     if (file.type === "image/gif") {
       return new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -41,7 +59,9 @@ const Store = (() => {
     canvas.width = Math.round(bmp.width * scale);
     canvas.height = Math.round(bmp.height * scale);
     canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", quality);
+    // PNG and WebP keep their transparency (logos); photos become JPEG
+    const out = file.type === "image/png" || file.type === "image/webp" ? file.type : "image/jpeg";
+    return canvas.toDataURL(out, quality);
   }
 
   /* ---------- GitHub ---------- */
@@ -66,7 +86,7 @@ const Store = (() => {
     return raw ? r.text() : r.json();
   }
 
-  const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" };
+  const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg" };
 
   // Swap embedded (newly uploaded) images for files in images/uploads/
   async function extractImages(content) {
@@ -75,7 +95,7 @@ const Store = (() => {
       for (const [k, v] of Object.entries(node)) {
         if (v && typeof v === "object") await walk(v);
         else if (typeof v === "string" && v.startsWith("data:image/")) {
-          const m = v.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+          const m = v.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/);
           if (!m || !EXT[m[1]]) throw new Error("Unsupported image type — use JPG, PNG, GIF or WebP.");
           const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
           const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]

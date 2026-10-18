@@ -443,7 +443,16 @@ function render(c) {
 
   // Top menu: logo, links and settings from content.menu
   const m = c.menu || {};
-  $("logo").innerHTML = rich(m.logo ?? "made by *byron*");
+  // Logo: text, an image (SVG/PNG/JPG), both, or none
+  const logoType = pick(m.logoType, ["text", "image", "both", "none"], "text");
+  const logoText = m.logo ?? "made by *byron*";
+  const showImg = (logoType === "image" || logoType === "both") && m.logoImage;
+  const showText = logoType === "text" || logoType === "both" || (logoType === "image" && !m.logoImage);
+  const logoH = /^\d+$/.test(String(m.logoHeight ?? "")) ? +m.logoHeight : 32;
+  $("logo").innerHTML =
+    (showImg ? `<img class="logo-img" src="${esc(m.logoImage)}" alt="${esc(String(logoText).replace(/\*/g, ""))}" style="height:${logoH}px">` : "") +
+    (showText && logoText ? `<span class="logo-text">${rich(logoText)}</span>` : "");
+  $("logo").hidden = logoType === "none";
   $("navMenu").innerHTML = (m.items || []).filter((it) => it.label)
     .map((it) => `<a href="${esc(safeUrl(it.link))}" data-iid="${esc(it.id)}"${it.newTab ? ' target="_blank" rel="noopener"' : ""}>${esc(it.label)}</a>`).join("");
   document.querySelector(".nav").classList.toggle("nav-static", m.sticky === false);
