@@ -464,3 +464,13 @@ details.cms-list-item.drop-before::before, details.cms-list-item.drop-after::aft
 }
 details.cms-list-item.drop-before::before { top: -5px; }
 details.cms-list-item.drop-after::after { bottom: -5px; }
+
+/* Project rows in the editor */
+.cms-proj-name { display: grid; }
+.cms-proj-cat { font-size: .72rem; font-weight: 500; color: var(--muted); }
+
+/* Dragging cards and services on the page */
+body.cms-open:not(.cms-collapsed) main :is(.card, .service)[draggable="true"] { cursor: grab; }
+main .page-dragging { opacity: .35; }
+main :is(.card, .service).page-drop-before { box-shadow: -6px 0 0 -2px #2f6bff; }
+main :is(.card, .service).page-drop-after { box-shadow: 6px 0 0 -2px #2f6bff; }

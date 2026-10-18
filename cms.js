@@ -132,6 +132,7 @@
   function setCollapsed(c) {
     document.body.classList.toggle("cms-collapsed", c);
     if (c) clearHover();
+    markDraggable();
   }
 
   function setOutlines(on) {
@@ -159,6 +160,7 @@
 
   function closeEditor() {
     document.body.classList.remove("cms-open", "cms-collapsed", "cms-outlines");
+    markDraggable();
     clearHover();
     current = { section: null, part: null };
     markCurrent();
@@ -211,6 +213,7 @@
   function renderPage() {
     Site.render(draft);
     markCurrent();
+    markDraggable();
     if (view === "inspector" && !selected?.isConnected) backFromInspector();
   }
 
@@ -251,6 +254,79 @@
     hoverLabel.hidden = false;
   });
   document.addEventListener("mouseleave", clearHover);
+
+  /* ---------- Drag project cards and services around on the page ---------- */
+  let pageDrag = null; // { kind: "project" | "item", id, list, el }
+
+  // Which list a dragged page item belongs to, and how to find its entry in the draft
+  function pageListOf(el) {
+    if (el.matches(".card")) return { kind: "project", id: el.dataset.project, list: draft.projects };
+    if (el.matches(".service")) {
+      const found = findPart(el.closest("[data-pid]")?.dataset.pid);
+      return found ? { kind: "item", id: el.dataset.iid, list: found.part.items } : null;
+    }
+    return null;
+  }
+  function markDraggable() {
+    const on = editing();
+    document.querySelectorAll("main .card, main .service").forEach((el) => (el.draggable = on));
+  }
+  const clearDrop = () => document.querySelectorAll(".page-drop-before, .page-drop-after").forEach((x) => x.classList.remove("page-drop-before", "page-drop-after"));
+  // Cards sit in rows, so compare left/right; fall back to above/below for stacked layouts
+  function dropSide(target, e) {
+    const r = target.getBoundingClientRect();
+    const sameRow = Math.abs(e.clientY - (r.top + r.height / 2)) < r.height / 2;
+    return sameRow ? (e.clientX < r.left + r.width / 2 ? "before" : "after") : (e.clientY < r.top + r.height / 2 ? "before" : "after");
+  }
+
+  document.addEventListener("dragstart", (e) => {
+    if (!editing()) return;
+    const el = e.target.closest?.("main .card, main .service");
+    if (!el) return;
+    const info = pageListOf(el);
+    if (!info) return;
+    pageDrag = { ...info, el };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", info.id);
+    el.classList.add("page-dragging");
+    clearHover();
+  });
+  document.addEventListener("dragover", (e) => {
+    if (!pageDrag) return;
+    const target = e.target.closest?.(pageDrag.kind === "project" ? "main .card" : "main .service");
+    if (!target || target === pageDrag.el || pageListOf(target)?.list !== pageDrag.list) return;
+    e.preventDefault();
+    clearDrop();
+    target.classList.add(dropSide(target, e) === "before" ? "page-drop-before" : "page-drop-after");
+  });
+  document.addEventListener("drop", (e) => {
+    if (!pageDrag) return;
+    const target = e.target.closest?.(pageDrag.kind === "project" ? "main .card" : "main .service");
+    if (!target || target === pageDrag.el) return;
+    e.preventDefault();
+    const list = pageDrag.list;
+    const key = pageDrag.kind === "project" ? "project" : "iid";
+    const from = list.findIndex((x) => x.id === pageDrag.id);
+    if (from < 0) return;
+    const [moved] = list.splice(from, 1);
+    let to = list.findIndex((x) => x.id === target.dataset[key]);
+    if (to < 0) { list.splice(from, 0, moved); return; }
+    if (dropSide(target, e) === "after") to++;
+    list.splice(to, 0, moved);
+    changed();
+    // Show the section it lives in, with the moved item's part open
+    const attr = key === "project" ? "data-project" : "data-iid";
+    setTimeout(() => {
+      const el = document.querySelector(`[${attr}="${moved.id}"]`);
+      const sec = el?.closest("main > section");
+      if (sec) showSection(sec.id, el.closest(".part")?.dataset.pid || null, { scrollPage: false });
+    }, 80);
+  });
+  document.addEventListener("dragend", () => {
+    pageDrag?.el.classList.remove("page-dragging");
+    pageDrag = null;
+    clearDrop();
+  });
 
   // While editing, a click on the page selects instead of following links or pressing buttons
   document.addEventListener("click", (e) => {
@@ -804,20 +880,37 @@
   let openProject = null; // id of the expanded project
 
   function projectsEditor() {
-    const wrap = h("div", { class: "cms-list" });
+    const wrap = h("div", { class: "cms-list cms-projects" });
     // A project clicked on the page opens in the list
     if (focusItem?.project) openProject = focusItem.project;
-    const move = (i, d) => {
-      const p = draft.projects;
-      [p[i], p[i + d]] = [p[i + d], p[i]];
+    let dragFrom = null;
+    const catName = (p) => CATEGORIES.find((c) => c[0] === p.category)?.[1] || "";
+
+    function move(from, to) {
+      const list = draft.projects;
+      if (to < 0 || to >= list.length || from === to) return;
+      const [it] = list.splice(from, 1);
+      list.splice(to, 0, it);
       rebuild(); changed();
-    };
+    }
+
     function rebuild() {
       wrap.replaceChildren(...draft.projects.map((p, i) => {
-        const summary = h("summary", {}, h("b", {}, p.title || "Untitled"), h("span", {}, CATEGORIES.find((c) => c[0] === p.category)?.[1]));
-        const refreshSummary = () => { summary.firstChild.textContent = draft.projects[i].title || "Untitled"; summary.lastChild.textContent = CATEGORIES.find((c) => c[0] === draft.projects[i].category)?.[1]; };
-        const item = h("details", { class: "cms-item", open: p.id === openProject, "data-project": p.id },
-          summary,
+        const title = h("b", {}, p.title || "Untitled");
+        const cat = h("span", { class: "cms-proj-cat" }, catName(p));
+        const handle = h("span", { class: "cms-handle", title: "Drag to move", "aria-hidden": "true" }, "⠿");
+        const stop = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+        const refreshSummary = () => { title.textContent = draft.projects[i].title || "Untitled"; cat.textContent = catName(draft.projects[i]); };
+        const item = h("details", { class: "cms-item cms-list-item cms-project-item", open: p.id === openProject, "data-project": p.id },
+          h("summary", {},
+            handle,
+            h("span", { class: "cms-li-title cms-proj-name" }, title, cat),
+            h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move project up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
+            h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move project down", disabled: i === draft.projects.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
+            h("button", { type: "button", class: "cms-icon danger", title: "Delete project", "aria-label": "Delete project", onclick: stop(() => {
+              if (!confirm(`Delete "${p.title || "Untitled"}"?`)) return;
+              draft.projects.splice(i, 1); rebuild(); changed();
+            }) }, "✕")),
           h("div", { class: "cms-section-body" },
             imageField(`projects.${i}.image`, "Image"),
             field(`projects.${i}.title`, "Title", { onInput: refreshSummary }),
@@ -826,18 +919,40 @@
               field(`projects.${i}.year`, "Year", { type: "number" })),
             field(`projects.${i}.summary`, "Short line"),
             field(`projects.${i}.description`, "Description", { type: "textarea", rows: 4 }),
-            field(`projects.${i}.size`, "Card size", { type: "select", options: SIZES }),
-            h("div", { class: "cms-row" },
-              h("button", { type: "button", class: "cms-btn small", disabled: i === 0, onclick: () => move(i, -1) }, "↑ Up"),
-              h("button", { type: "button", class: "cms-btn small", disabled: i === draft.projects.length - 1, onclick: () => move(i, 1) }, "↓ Down"),
-              h("button", { type: "button", class: "cms-btn small danger", onclick: () => {
-                if (!confirm(`Delete "${p.title || "Untitled"}"?`)) return;
-                draft.projects.splice(i, 1); rebuild(); changed();
-              } }, "Delete"))));
+            field(`projects.${i}.size`, "Card size", { type: "select", options: SIZES })));
         item.addEventListener("toggle", () => { if (item.open) openProject = p.id; else if (openProject === p.id) openProject = null; });
+
+        handle.addEventListener("pointerdown", () => (item.draggable = true));
+        item.addEventListener("dragstart", (e) => { e.stopPropagation(); dragFrom = i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "project"); item.classList.add("dragging"); });
+        item.addEventListener("dragend", () => {
+          item.draggable = false; dragFrom = null; item.classList.remove("dragging");
+          wrap.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+        });
         return item;
       }));
     }
+    const dropIndex = (e) => {
+      const rows = [...wrap.children];
+      for (const [k, r] of rows.entries()) {
+        const b = r.getBoundingClientRect();
+        if (e.clientY < b.top + b.height / 2) return { index: k, row: r, where: "before" };
+      }
+      return { index: rows.length, row: rows.at(-1), where: "after" };
+    };
+    wrap.addEventListener("dragover", (e) => {
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
+      wrap.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+      const t = dropIndex(e);
+      t.row?.classList.add(t.where === "before" ? "drop-before" : "drop-after");
+    });
+    wrap.addEventListener("drop", (e) => {
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
+      const to = dropIndex(e).index;
+      move(dragFrom, to > dragFrom ? to - 1 : to);
+    });
+
     rebuild();
     const add = h("button", { type: "button", class: "cms-btn primary block", onclick: () => {
       const p = { id: "p" + Date.now(), title: "New project", category: "design", year: new Date().getFullYear(), summary: "", description: "", size: "", image: "" };
@@ -845,7 +960,7 @@
       draft.projects.unshift(p);
       rebuild(); changed();
     } }, "+ Add project");
-    return [add, wrap];
+    return [h("p", { class: "cms-note" }, "Drag ⠿ here, or drag the cards on the page, to change the order."), add, wrap];
   }
 
   // Every CSS edit made in the inspector, with undo
