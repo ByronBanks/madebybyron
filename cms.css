@@ -502,3 +502,14 @@ main :is(.card, .service).page-drop-after { box-shadow: 6px 0 0 -2px #2f6bff; }
 .cms-menu-item:disabled { opacity: .35; cursor: default; }
 .cms-menu-item.danger { color: var(--c-design); }
 .cms-menu-sep { height: 1px; margin: 5px 4px; background: var(--line); }
+
+/* Undo bar */
+.cms-toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 80; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 16px; border-radius: 12px;
+  background: #141413; color: #fff; font-size: .9rem; box-shadow: 0 10px 30px rgb(0 0 0 / .25);
+}
+.cms-toast[hidden] { display: none; }
+.cms-toast button { font-weight: 700; color: #9fd3ff; padding: 4px 8px; border-radius: 6px; }
+.cms-toast button:hover { background: rgb(255 255 255 / .1); }
+body.cms-open:not(.cms-collapsed) .cms-toast { left: calc(50% + var(--cms-w) / 2); }

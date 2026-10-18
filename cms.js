@@ -167,6 +167,28 @@
     signInBtn.textContent = "Sign in";
   }
 
+  /* ---------- Undo bar: deletes happen straight away, with a few seconds to undo ---------- */
+  const toast = h("div", { class: "cms-toast", role: "status", hidden: true });
+  document.body.append(toast);
+  let undoSnapshot = null;
+  let toastTimer = 0;
+  function deleted(label, snapshot) {
+    undoSnapshot = snapshot;
+    toast.replaceChildren(h("span", {}, `Deleted ${label}`), h("button", { type: "button", onclick: undoDelete }, "Undo"));
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; undoSnapshot = null; }, 7000);
+  }
+  function undoDelete() {
+    if (!undoSnapshot) return;
+    draft = undoSnapshot;
+    undoSnapshot = null;
+    toast.hidden = true;
+    setDirty(true);
+    renderPage();
+    rebuildView();
+  }
+
   /* ---------- Views ---------- */
   let view = "overview";
   let current = { section: null, part: null };  // ids of what the section view shows
@@ -340,6 +362,9 @@
     const service = e.target.closest(".service");
     focusItem = card ? { project: card.dataset.project }
       : service ? { item: [...service.parentElement.children].indexOf(service) }
+      : null;
+    selectedItem = card ? { project: card.dataset.project }
+      : service ? { pid: service.closest("[data-pid]")?.dataset.pid, iid: service.dataset.iid }
       : null;
     showSection(sec.id, e.target.closest(".part")?.dataset.pid || null, { scrollPage: false });
   }, true);
@@ -561,6 +586,8 @@
             h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
             h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move down", disabled: i === items.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
             h("button", { type: "button", class: "cms-icon danger", title: "Remove", "aria-label": "Remove", onclick: stop(() => {
+              const snap = clone(draft);
+              setTimeout(() => deleted(`“${titleOf(it)}”`, snap));
               getPath(draft, path).splice(i, 1);
               if (openListItem[path] === i) delete openListItem[path];
               rebuild(); changed();
@@ -861,7 +888,7 @@
     if (!draft) return;
     const scroll = overviewView.scrollTop;
     overviewView.replaceChildren(
-      h("p", { class: "cms-tip" }, "Tip: click anything on the page to edit that section."),
+      h("p", { class: "cms-tip" }, "Tip: click anything on the page to edit it, press Delete to remove it, or right-click for more."),
       overviewSection("Page sections", sectionsList()),
       overviewSection("Projects", projectsEditor()),
       overviewSection("Style changes", styleChangesList()));
@@ -933,8 +960,9 @@
             h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move project up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
             h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move project down", disabled: i === draft.projects.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
             h("button", { type: "button", class: "cms-icon danger", title: "Delete project", "aria-label": "Delete project", onclick: stop(() => {
-              if (!confirm(`Delete "${p.title || "Untitled"}"?`)) return;
+              const snap = clone(draft);
               draft.projects.splice(i, 1); rebuild(); changed();
+              deleted(`“${p.title || "Untitled"}”`, snap);
             }) }, "✕")),
           h("div", { class: "cms-section-body" },
             imageField(`projects.${i}.image`, "Image"),
@@ -1176,12 +1204,13 @@
   }
   function removeSection(i) {
     const s = draft.sections[i];
-    if (!confirm(`Delete this ${sectionKind(s)} section?\n\nYou can still press Discard before publishing.`)) return;
+    const snap = clone(draft);
     draft.sections.splice(i, 1);
     for (const sel of Object.keys(draft.styles || {})) if (sel === `#${s.id}` || sel.startsWith(`#${s.id} `)) delete draft.styles[sel];
     for (const p of s.parts || []) dropStylesFor(p);
     changed();
     showOverview();
+    deleted(`the ${sectionKind(s)} section`, snap);
   }
 
   // Simple table editor: a grid of cells plus add/remove rows and columns
@@ -1265,6 +1294,7 @@
             card.classList.toggle("open", open);
             e.currentTarget.setAttribute("aria-expanded", String(open));
             current.part = open ? part.id : current.part === part.id ? null : current.part;
+            selectedItem = null;
             markCurrent();
             if (open) document.querySelector(`[data-pid="${part.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
           } }, h("b", {}, Site.parts[part.type]?.label || part.type), label),
@@ -1275,11 +1305,12 @@
           h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move part up", disabled: j === 0, onclick: () => movePart(j, j - 1) }, "↑"),
           h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move part down", disabled: j === list.length - 1, onclick: () => movePart(j, j + 2) }, "↓"),
           h("button", { type: "button", class: "cms-icon danger", title: "Delete part", "aria-label": "Delete part", onclick: () => {
-            if (!confirm(`Delete this ${Site.parts[part.type]?.label || "part"}${part.parts?.length ? " and everything inside it" : ""}?`)) return;
+            const snap = clone(draft);
             list.splice(j, 1);
             dropStylesFor(part);
             if (current.part === part.id) current.part = null;
             refresh();
+            deleted(Site.parts[part.type]?.label || "part", snap);
           } }, "✕")),
         body);
       card.addEventListener("input", (e) => { if (e.target.closest(".cms-part") === card) label.textContent = partPreview(part); });
@@ -1344,6 +1375,51 @@
     ];
   }
 
+  /* ---------- Deleting (menu, ✕ buttons and the Delete key) ---------- */
+  function deletePart(pid) {
+    const f = findPart(pid);
+    if (!f) return;
+    const snap = clone(draft);
+    f.list.splice(f.j, 1);
+    dropStylesFor(f.part);
+    if (current.part === pid) current.part = null;
+    selectedItem = null;
+    afterMenu(f.section.id);
+    deleted(Site.parts[f.part.type]?.label || "part", snap);
+  }
+  function deleteProject(id) {
+    const i = draft.projects.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const snap = clone(draft);
+    const [gone] = draft.projects.splice(i, 1);
+    selectedItem = null;
+    afterMenu(current.section || draft.sections[0].id, current.part);
+    deleted(`“${gone.title || "Untitled"}”`, snap);
+  }
+  function deleteListItem(pid, iid) {
+    const f = findPart(pid);
+    const items = f?.part.items;
+    const i = items?.findIndex((it) => it.id === iid) ?? -1;
+    if (i < 0) return;
+    const snap = clone(draft);
+    const [gone] = items.splice(i, 1);
+    selectedItem = null;
+    afterMenu(f.section.id, pid);
+    deleted(`“${gone.title || gone.label || "item"}”`, snap);
+  }
+
+  // Click something on the page, then press Delete (or Backspace) to remove it
+  let selectedItem = null; // { project } or { pid, iid } when a card or service was clicked
+  document.addEventListener("keydown", (e) => {
+    if (!editing() || view !== "section" || !(e.key === "Delete" || e.key === "Backspace")) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable]") || !menu.hidden || signInDialog.open) return;
+    if (selectedItem?.project) deleteProject(selectedItem.project);
+    else if (selectedItem?.iid) deleteListItem(selectedItem.pid, selectedItem.iid);
+    else if (current.part) deletePart(current.part);
+    else return;
+    e.preventDefault();
+  });
+
   /* ---------- Right-click menu on the page ---------- */
   const menu = h("div", { class: "cms-menu", role: "menu", hidden: true });
   document.body.append(menu);
@@ -1395,7 +1471,7 @@
         focusItem = { project: copy.id };
         afterMenu(s.id, card.closest(".part")?.dataset.pid);
       });
-      item("Delete project", () => { if (!confirm(`Delete "${proj.title}"?`)) return; draft.projects.splice(i, 1); afterMenu(s.id, card.closest(".part")?.dataset.pid); }, { danger: true });
+      item("Delete project", () => deleteProject(proj.id), { danger: true });
       sep();
     } else if (service) {
       const f = findPart(service.closest("[data-pid]")?.dataset.pid);
@@ -1410,7 +1486,7 @@
         afterMenu(s.id, f.part.id);
       });
       item("Add service after", () => { items.splice(i + 1, 0, { id: Site.newItemId(), title: "New service", text: "" }); focusItem = { item: i + 1 }; afterMenu(s.id, f.part.id); });
-      item("Delete service", () => { if (!confirm(`Delete "${items[i].title}"?`)) return; items.splice(i, 1); afterMenu(s.id, f.part.id); }, { danger: true });
+      item("Delete service", () => deleteListItem(f.part.id, items[i].id), { danger: true });
       sep();
     }
 
@@ -1435,12 +1511,7 @@
       item("Move down", () => { list.splice(j + 1, 0, list.splice(j, 1)[0]); afterMenu(s.id, part.id); }, { disabled: j === list.length - 1 });
       if (f.chain.length) item("Select the box it's in", () => { closeMenu(); settingsOpen = false; showSection(s.id, f.chain.at(-1), { scrollPage: false }); });
       item("Edit CSS", () => { closeMenu(); current = { section: s.id, part: part.id }; inspect(partEl.firstElementChild || partEl, "section"); });
-      item(part.parts?.length ? "Delete (and what's inside)" : "Delete", () => {
-        if (!confirm(`Delete this ${name}${part.parts?.length ? " and everything inside it" : ""}?`)) return;
-        list.splice(j, 1);
-        dropStylesFor(part);
-        afterMenu(s.id);
-      }, { danger: true });
+      item(part.parts?.length ? "Delete (and what's inside)" : "Delete", () => deletePart(part.id), { danger: true });
       sep();
     }
 
