@@ -5,6 +5,8 @@
 #   FTP_SERVER    e.g. ftp.bmbc-digital.co.uk
 #   FTP_USERNAME
 #   FTP_PASSWORD
+#   CMS_GITHUB_TOKEN  fine-grained token (this repo, Contents: read & write) used by the editor server
+#   ADMIN_EMAIL       where password reset links are sent (optional)
 # Repository variables:
 #   FTP_SERVER_DIR  folder to upload into, from the FTP login's home; must end in MadeByByron/Website/
 #   FTP_PROTOCOL    ftps (default) or ftp
@@ -39,6 +41,29 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # The editor server (api/cms.php) reads its settings from api/config.php, written here
+      # from secrets so the GitHub token never appears in the repository.
+      - name: Write editor server config
+        env:
+          CMS_GITHUB_TOKEN: ${{ secrets.CMS_GITHUB_TOKEN }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SITE_URL: https://bmbc-digital.co.uk/MadeByByron/Website/
+        run: |
+          php -r '
+            $c = [
+              "github_token" => getenv("CMS_GITHUB_TOKEN") ?: "",
+              "admin_email"  => getenv("ADMIN_EMAIL") ?: "",
+              "repo"         => getenv("REPO"),
+              "branch"       => getenv("BRANCH"),
+              "site_url"     => getenv("SITE_URL"),
+            ];
+            file_put_contents("api/config.php", "<?php\n// Written by the deploy from GitHub secrets. Do not edit or commit.\nreturn " . var_export($c, true) . ";\n");
+          '
+          php -l api/config.php
+          echo "Editor server configured: token $( [ -n "$CMS_GITHUB_TOKEN" ] && echo yes || echo no ), reset email $( [ -n "$ADMIN_EMAIL" ] && echo yes || echo no )"
+
       - name: Upload over FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -54,3 +79,4 @@ jobs:
             .claude/**
             README.md
             **/.DS_Store
+            api/data/**

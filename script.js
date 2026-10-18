@@ -76,6 +76,19 @@ function boxDecls(k) {
     ["border-radius", len(k.radius)],
   ];
 }
+// Left / centre / right for a single item (Style → Alignment). Containers move with margins
+// (so they keep their full width unless given one); everything else lines itself up.
+const FLEX = { left: "flex-start", center: "center", right: "flex-end" };
+const CONTAINERS = new Set(["box", "table", "projects", "services", "spacer"]);
+function alignRules(rule, sel, a, type) {
+  if (!FLEX[a]) return;
+  const side = (x) => [["margin-left", a === "left" ? "0" : "auto"], ["margin-right", a === "right" ? "0" : "auto"], ["text-align", a]];
+  if (type === "image") { rule(sel, [["align-self", "stretch"], ["text-align", a]]); rule(`${sel} figure`, side()); return; }
+  if (CONTAINERS.has(type)) rule(sel, side());
+  else rule(sel, [["align-self", FLEX[a]], ["text-align", a]]);
+  rule(`${sel} > .box`, [["align-items", FLEX[a]], ["justify-content", FLEX[a]], ["text-align", a]]);
+  rule(`${sel} :is(.clients, .socials, .filters)`, [["justify-content", FLEX[a]]]);
+}
 const textDecls = (k) => [["color", k.color], ["font-family", FONTS[k.font]], ["font-size", has(k.size) ? px(k.size) : undefined]];
 
 function quickCSS(c) {
@@ -102,6 +115,7 @@ function quickCSS(c) {
     eachPart(s.parts, (p) => {
       const k = p.css || {};
       const sel = `[data-pid="${p.id}"]`;
+      alignRules(rule, sel, k.align, p.type); // first, so margins set by hand still win
       rule(sel, boxDecls(k));
       rule(`${sel} > *`, textDecls(k));
       if (has(k.size)) rule(`${sel} :is(.quote-text, .big-link)`, [["font-size", px(k.size)]]);
@@ -110,7 +124,7 @@ function quickCSS(c) {
         const t = it?.css;
         if (!t) continue;
         const isel = `[data-iid="${it.id}"]`;
-        rule(isel, [...boxDecls(t), ...textDecls(t)]);
+        rule(isel, [...boxDecls(t), ...textDecls(t), ["text-align", FLEX[t.align] ? t.align : undefined]]);
         rule(`${isel} :is(h3, p)`, [["color", t.color]]);
         if (has(t.titleSize)) rule(`${isel} h3`, [["font-size", px(t.titleSize)]]);
         if (has(t.textSize)) rule(`${isel} p`, [["font-size", px(t.textSize)]]);

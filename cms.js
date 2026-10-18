@@ -5,7 +5,8 @@
      section   – one section: its settings and its parts (opened by clicking the page)
      inspector – full CSS for one element (opened with the small "CSS" buttons)
 */
-(() => {
+(async () => {
+  await Store.init();
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -30,51 +31,145 @@
   let dirty = false;
   let openGroup = "Page sections"; // which overview group is open
 
-  /* ---------- Sign-in ---------- */
+  /* ---------- Sign-in ----------
+     server  – your own password (the GitHub token stays on the server), with set-up and reset
+     github  – a GitHub token kept in this browser (used until the server is set up)
+     preview – no account; edits stay in this browser */
   const signInBtn = document.getElementById("signInBtn");
+  const MODE = Store.mode;
+  const LIVE = MODE !== "preview";
+  const MIN_PASSWORD = 10;
 
-  const GITHUB = Store.mode === "github";
-  const tokenInput = h("input", { type: "password", autocomplete: "off", placeholder: "github_pat_…", required: true });
-  const signInError = h("p", { class: "cms-error", role: "alert" });
-  const submitBtn = h("button", { type: "submit", class: "cms-btn primary" }, GITHUB ? "Sign in" : "Continue as Byron");
-
-  const signInDialog = h("dialog", { class: "cms-dialog" },
-    h("form", { onsubmit: submitSignIn },
-      h("h3", {}, "Sign in to edit"),
-      GITHUB
-        ? [h("p", { class: "cms-dialog-note" },
-            `Paste your GitHub access token for ${Store.repo}. It's remembered on this device until you sign out, and only ever sent to GitHub.`),
-           h("label", { class: "cms-field" }, h("span", {}, "GitHub token"), tokenInput)]
-        : h("p", { class: "cms-dialog-note" },
-            "Preview mode: no GitHub repository is connected yet, so edits are kept in this browser only."),
-      signInError,
-      h("div", { class: "cms-dialog-actions" },
-        h("button", { type: "button", class: "cms-btn", onclick: () => signInDialog.close() }, "Cancel"),
-        submitBtn)));
+  const signInDialog = h("dialog", { class: "cms-dialog" });
   document.body.append(signInDialog);
+  const resetToken = new URLSearchParams(location.search).get("reset");
 
-  async function submitSignIn(e) {
-    e.preventDefault();
-    signInError.textContent = "";
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Checking…";
-    try {
-      await Store.signIn(tokenInput.value);
-      tokenInput.value = "";
-      signInDialog.close();
-      saved = null; // load the latest version from GitHub
-      openEditor();
-    } catch (err) {
-      signInError.textContent = err.message;
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = GITHUB ? "Sign in" : "Continue as Byron";
+  // Build one screen of the dialog: title, note, fields, a submit action and extra links
+  function dialogScreen({ title, note, fields = [], submit, run, links = [] }) {
+    const error = h("p", { class: "cms-error", role: "alert" });
+    const ok = h("p", { class: "cms-ok", role: "status" });
+    const btn = h("button", { type: "submit", class: "cms-btn primary" }, submit);
+    const form = h("form", { onsubmit: async (e) => {
+      e.preventDefault();
+      error.textContent = ""; ok.textContent = "";
+      const values = Object.fromEntries(fields.filter((f) => f.name).map((f) => [f.name, form.elements[f.name].value]));
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "One moment…";
+      try { const msg = await run(values); if (msg) ok.textContent = msg; }
+      catch (err) { error.textContent = err.message; }
+      finally { btn.disabled = false; btn.textContent = label; }
+    } },
+      h("h3", {}, title),
+      note ? h("p", { class: "cms-dialog-note" }, note) : null,
+      fields.map((f) => f.el || h("label", { class: "cms-field" }, h("span", {}, f.label),
+        h("input", { name: f.name, type: f.type || "password", autocomplete: f.autocomplete || "off", placeholder: f.placeholder || "", required: f.required !== false, minlength: f.minlength }),
+        f.hint ? h("small", {}, f.hint) : null)),
+      error, ok,
+      h("div", { class: "cms-dialog-actions" },
+        links.length ? h("div", { class: "cms-dialog-links" }, links.map(([text, fn]) => h("button", { type: "button", class: "cms-link", onclick: fn }, text))) : null,
+        h("button", { type: "button", class: "cms-btn", onclick: () => signInDialog.close() }, "Cancel"),
+        btn));
+    signInDialog.replaceChildren(form);
+    if (!signInDialog.open) signInDialog.showModal();
+    form.querySelector("input")?.focus();
+  }
+
+  const newPasswordFields = [
+    { name: "password", label: "New password", autocomplete: "new-password", minlength: MIN_PASSWORD, hint: `At least ${MIN_PASSWORD} characters. A short sentence is easy to remember and hard to guess.` },
+    { name: "confirm", label: "Type it again", autocomplete: "new-password", minlength: MIN_PASSWORD },
+  ];
+  const checkNew = (v) => {
+    if (v.password.length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters.`);
+    if (v.password !== v.confirm) throw new Error("The two passwords don't match.");
+  };
+  const signedInNow = () => { signInDialog.close(); saved = null; openEditor(); };
+
+  function showSignIn() {
+    if (MODE === "server") return Store.hasPassword() ? showPasswordLogin() : showResetChoice(true);
+    if (MODE === "github") {
+      return dialogScreen({
+        title: "Sign in to edit",
+        note: `Paste your GitHub access token for ${Store.repo}. It's remembered on this device until you sign out, and only ever sent to GitHub.`,
+        fields: [{ name: "token", label: "GitHub token", placeholder: "github_pat_…" }],
+        submit: "Sign in",
+        run: async (v) => { await Store.signIn(v.token.trim()); signedInNow(); },
+      });
     }
+    dialogScreen({
+      title: "Sign in to edit",
+      note: "Preview mode: no GitHub repository is connected yet, so edits are kept in this browser only.",
+      submit: "Continue as Byron",
+      run: async () => { await Store.signIn(); signedInNow(); },
+    });
+  }
+
+  function showPasswordLogin() {
+    dialogScreen({
+      title: "Sign in to edit",
+      fields: [{ name: "password", label: "Password", autocomplete: "current-password" }],
+      submit: "Sign in",
+      run: async (v) => { await Store.signIn(v.password); signedInNow(); },
+      links: [["Forgot password?", () => showResetChoice(false)]],
+    });
+  }
+
+  // First-time set-up and "forgot password" share the same two routes
+  function showResetChoice(firstTime) {
+    const email = Store.resetEmail();
+    dialogScreen({
+      title: firstTime ? "Set up your editor password" : "Reset your password",
+      note: email
+        ? `We'll email a link to ${email}. It works once, for one hour.`
+        : "No reset email is set up on the server, so use a GitHub token instead.",
+      submit: email ? "Email me a link" : "Use a GitHub token",
+      run: async () => {
+        if (!email) return showTokenReset(firstTime);
+        await Store.requestReset();
+        return "Sent. Open the link in the email on this device. (Check spam if it doesn't arrive in a minute or two.)";
+      },
+      links: [["Use a GitHub token instead", () => showTokenReset(firstTime)]].concat(firstTime ? [] : [["Back to sign in", showPasswordLogin]]),
+    });
+  }
+
+  function showTokenReset(firstTime) {
+    dialogScreen({
+      title: firstTime ? "Set up with a GitHub token" : "Reset with a GitHub token",
+      note: `Paste a GitHub token that can write to ${Store.repo}. It's only used to prove it's you and is never stored.`,
+      fields: [{ name: "githubToken", label: "GitHub token", placeholder: "github_pat_…" }, ...newPasswordFields],
+      submit: "Save password",
+      run: async (v) => { checkNew(v); await Store.resetPassword({ githubToken: v.githubToken.trim(), password: v.password }); signedInNow(); },
+      links: [["Back", () => showResetChoice(firstTime)]],
+    });
+  }
+
+  function showLinkReset() {
+    dialogScreen({
+      title: "Choose a new password",
+      fields: newPasswordFields,
+      submit: "Save password",
+      run: async (v) => {
+        checkNew(v);
+        await Store.resetPassword({ resetToken, password: v.password });
+        history.replaceState(null, "", location.pathname + location.hash); // the link can't be used again
+        signedInNow();
+      },
+    });
+  }
+
+  function showChangePassword() {
+    dialogScreen({
+      title: "Change your password",
+      note: "Other devices will be signed out.",
+      fields: [{ name: "current", label: "Current password", autocomplete: "current-password" }, ...newPasswordFields],
+      submit: "Change password",
+      run: async (v) => { checkNew(v); await Store.changePassword(v.current, v.password); signInDialog.close(); toastMessage("Password changed"); },
+    });
   }
 
   signInBtn.addEventListener("click", () => {
     if (Store.isSignedIn()) openEditor();
-    else { signInError.textContent = ""; signInDialog.showModal(); }
+    else showSignIn();
   });
 
   /* ---------- Sidebar shell ---------- */
@@ -83,7 +178,7 @@
   const sectionView = h("div", { class: "cms-body cms-section-view", hidden: true });
   const inspectorView = h("div", { class: "cms-body cms-inspector", hidden: true });
   const importInput = h("input", { type: "file", accept: "application/json", hidden: true, onchange: importJSON });
-  const saveBtn = h("button", { class: "cms-btn primary", onclick: save }, GITHUB ? "Publish" : "Save");
+  const saveBtn = h("button", { class: "cms-btn primary", onclick: save, title: LIVE ? "Publish (⌘S)" : "Save (⌘S)" }, LIVE ? "Publish" : "Save");
   const undoBtn = h("button", { type: "button", class: "cms-icon cms-hist", title: "Undo (⌘Z)", "aria-label": "Undo", disabled: true, onclick: () => historyUndo() }, "↶");
   const redoBtn = h("button", { type: "button", class: "cms-icon cms-hist", title: "Redo (⇧⌘Z)", "aria-label": "Redo", disabled: true, onclick: () => historyRedo() }, "↷");
 
@@ -96,7 +191,7 @@
     h("div", { class: "cms-head" },
       h("div", {},
         h("strong", {}, "Site editor"),
-        h("span", { class: "cms-pill" }, GITHUB ? "Connected to GitHub" : "Preview mode")),
+        h("span", { class: "cms-pill" }, MODE === "server" ? "Signed in" : MODE === "github" ? "Connected to GitHub" : "Preview mode")),
       h("button", { class: "cms-icon", title: "Hide editor (use the page normally)", "aria-label": "Hide editor", onclick: () => setCollapsed(true) }, "⟨")),
     h("label", { class: "cms-toggle", title: "Draw the edge of every box on the page (a visual guide only)." },
       h("span", {}, "Show outlines"),
@@ -115,8 +210,9 @@
       h("div", { class: "cms-row cms-more" },
         h("button", { class: "cms-link", onclick: exportJSON }, "Export"),
         h("button", { class: "cms-link", onclick: () => importInput.click() }, "Import"),
+        MODE === "server" ? h("button", { class: "cms-link", onclick: () => showChangePassword() }, "Change password") : null,
         h("button", { class: "cms-link", onclick: signOut }, "Sign out")),
-      h("p", { class: "cms-note" }, GITHUB
+      h("p", { class: "cms-note" }, LIVE
         ? "Publish saves to GitHub. The live site updates about a minute later."
         : "Preview mode: saved in this browser only."),
       importInput));
@@ -248,6 +344,17 @@
     undoBtn.title = `Undo (⌘Z)${undoStack.length ? ` · ${undoStack.length} step${undoStack.length === 1 ? "" : "s"}` : ""}`;
   }
 
+  // ⌘S / Ctrl+S publishes (instead of the browser's "Save page as…")
+  document.addEventListener("keydown", (e) => {
+    if (!document.body.classList.contains("cms-open") || signInDialog.open) return;
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      commit();
+      if (dirty) save();
+      else toastMessage("Nothing new to publish");
+    }
+  }, true);
+
   // ⌘Z / Ctrl+Z undo · ⇧⌘Z / Ctrl+Y redo — anywhere while the editor is open
   document.addEventListener("keydown", (e) => {
     if (!document.body.classList.contains("cms-open") || signInDialog.open) return;
@@ -261,6 +368,12 @@
   const toast = h("div", { class: "cms-toast", role: "status", hidden: true });
   document.body.append(toast);
   let toastTimer = 0;
+  function toastMessage(text) {
+    toast.replaceChildren(h("span", {}, text));
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast.hidden = true), 3000);
+  }
   function deleted(label) {
     toast.replaceChildren(h("span", {}, `Deleted ${label}`), h("button", { type: "button", onclick: historyUndo }, "Undo"), h("small", {}, "⌘Z"));
     toast.hidden = false;
@@ -549,12 +662,13 @@
   async function save() {
     if (saveBtn.disabled) return;
     saveBtn.disabled = true;
-    status.textContent = GITHUB ? "Publishing…" : "Saving…";
+    status.textContent = LIVE ? "Publishing…" : "Saving…";
     try {
       const snapshot = clone(draft);
       await Store.saveContent(snapshot);
       saved = snapshot;
-      setDirty(JSON.stringify(draft) !== JSON.stringify(saved), GITHUB ? "Published ✓ — live in about a minute" : "Saved ✓");
+      setDirty(JSON.stringify(draft) !== JSON.stringify(saved), LIVE ? "Published ✓ — live in about a minute" : "Saved ✓");
+      toastMessage(LIVE ? "Published — the live site updates in about a minute" : "Saved");
     } catch (e) {
       setDirty(true, "Couldn't save — " + (e?.message || "unknown error"));
     } finally {
@@ -833,12 +947,27 @@
       h("small", { class: "cms-note" }, "Empty boxes use the design's spacing (shown faintly)."));
   }
 
+  // Auto / Left / Centre / Right for one item
+  function itemAlignControl(path) {
+    const group = h("div", { class: "cms-seg cms-seg4", role: "radiogroup", "aria-label": "Alignment" });
+    const draw = () => {
+      const now = getPath(draft, path) || "";
+      group.replaceChildren(...[["", "Auto", ""], ["left", "Left", "⇤"], ["center", "Centre", "↔"], ["right", "Right", "⇥"]].map(([v, l, icon]) =>
+        h("button", { type: "button", role: "radio", "aria-checked": String(now === v), class: now === v ? "on" : "",
+          title: v ? `Line this up on the ${l.toLowerCase()}` : "Follow the section's alignment",
+          onclick: () => { setQuick(path, v); draw(); } }, icon ? [h("span", { "aria-hidden": "true" }, icon), " "] : null, l)));
+    };
+    draw();
+    return group;
+  }
+
   let styleOpen = true; // keep the Style group open or closed as you move between items
   function styleEditor(base, o) {
     const sampleText = o.textSel || o.box;
     const d = h("details", { class: "cms-more-opts cms-style", open: styleOpen },
       h("summary", {}, "Style"),
       h("div", { class: "cms-section-body" },
+        o.noAlign ? null : h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Alignment"), itemAlignControl(`${base}.align`)),
         h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Spacing"), spacingControl(base, o.box)),
         o.text ? h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Text"),
           h("div", { class: "cms-quick-grid" },
@@ -872,7 +1001,7 @@
     text: !NO_TEXT.has(part.type),
     size: !NO_TEXT.has(part.type) && part.type !== "box",
   });
-  const sectionStyle = (s) => ({ box: `#${s.id}`, textSel: `#${s.id}`, text: true, size: false });
+  const sectionStyle = (s) => ({ box: `#${s.id}`, textSel: `#${s.id}`, text: true, size: false, noAlign: true });
   const serviceStyle = (it) => ({ box: `[data-iid="${it.id}"]`, textSel: `[data-iid="${it.id}"] h3`, text: true,
     sizes: [["titleSize", "Title size", "h3"], ["textSize", "Text size", "p"]] });
   const linkStyle = (it) => ({ box: `[data-iid="${it.id}"]`, text: true, size: true });
@@ -920,9 +1049,7 @@
     services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" }, serviceStyle)],
     spacer: (p) => [field(p + "size", "Height", { type: "select", options: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] })],
     box: (p, part, path) => [
-      h("div", { class: "cms-grid2" },
-        field(p + "dir", "Arrange contents", { type: "select", options: [["down", "Down (stacked)"], ["across", "Across (columns)"]] }),
-        field(p + "align", "Align", { type: "select", options: [["", "Like the section"], ["left", "Left"], ["center", "Centre"], ["right", "Right"]] })),
+      field(p + "dir", "Arrange contents", { type: "select", options: [["down", "Down (stacked)"], ["across", "Across (columns)"]], hint: "Line contents up left, centre or right under Style → Alignment." }),
       field(p + "gap", "Gap between items (px)", { parse: (v) => v.replace(/[^0-9]/g, ""), hint: "Empty = 20" }),
       partsList(part, path),
     ],
@@ -989,7 +1116,7 @@
         ["newTab", "Opens in", { type: "select", options: [[false, "The same tab"], [true, "A new tab"]], parse: (v) => v === "true" }],
       ], "+ Add menu item", { label: "New link", link: "#top" }, menuItemStyle),
       field("menu.sticky", "When scrolling", { type: "select", options: [[true, "Stay at the top"], [false, "Scroll away"]], parse: (v) => v === "true" }),
-      styleEditor("menu.css", { box: ".nav", textSel: ".nav .nav-links a", text: true, size: false,
+      styleEditor("menu.css", { box: ".nav", textSel: ".nav .nav-links a", text: true, size: false, noAlign: true,
         sizes: [["logoSize", "Logo size", ".logo"], ["linkSize", "Link size", ".nav-links a"]] }),
     ];
   }
@@ -1714,6 +1841,7 @@
     menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
   }
 
-  // Stay in the editor across reloads in the same tab
-  if (Store.isSignedIn()) openEditor();
+  // Start: arriving from a reset email → choose a new password; already signed in → open the editor
+  if (resetToken && MODE === "server") showLinkReset();
+  else if (Store.isSignedIn()) openEditor();
 })();

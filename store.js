@@ -1,9 +1,12 @@
 /*
   Where content, sign-in and images are kept. The rest of the site talks only to `Store`.
 
-  GITHUB MODE (CMS_CONFIG.repo set): sign in with a GitHub access token. Save commits
-  content.json and any new images straight to the repo; the deploy workflow then
-  publishes the site to the server.
+  SERVER MODE (CMS_CONFIG.api set and the server is set up): sign in with your own
+  password. The GitHub token stays on the server (api/cms.php), which loads content
+  and publishes for you.
+
+  GITHUB MODE (fallback while the server isn't set up): sign in with a GitHub access
+  token kept in this browser. Save commits straight to the repo.
 
   PREVIEW MODE (no repo set): edits are kept in this browser only (IndexedDB).
 */
@@ -11,7 +14,42 @@ const Store = (() => {
   const cfg = window.CMS_CONFIG || {};
   const repo = (cfg.repo || "").trim();
   const branch = cfg.branch || "main";
-  const mode = repo ? "github" : "preview";
+  let mode = repo ? "github" : "preview";
+  let session = { configured: false, hasPassword: false, signedIn: false, email: null };
+
+  /* ---------- Server (api/cms.php) ---------- */
+  async function call(action, body) {
+    let r;
+    try {
+      r = await fetch(`${cfg.api}?action=${action}`, {
+        method: body ? "POST" : "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: body ? { "Content-Type": "application/json", "X-CMS": "1" } : { "X-CMS": "1" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) { throw new Error("Couldn't reach the editor server. Check your connection."); }
+    let data;
+    try { data = await r.json(); } catch (e) { throw Object.assign(new Error("The editor server didn't answer properly."), { status: r.status }); }
+    if (!r.ok || data?.error) throw Object.assign(new Error(data?.error || `Error ${r.status}`), { status: r.status });
+    return data;
+  }
+
+  // Find out (once) whether the server is set up; until then the GitHub-token mode stays available
+  let initPromise = null;
+  function init() {
+    return (initPromise ??= (async () => {
+      if (!cfg.api) return;
+      try {
+        session = await call("session");
+        if (session.configured) {
+          mode = "server";
+          token = null;
+          try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} // the old browser-stored token is no longer needed
+        }
+      } catch (e) { /* no PHP here (e.g. a local preview) */ }
+    })());
+  }
   const TOKEN_KEY = "mbb-github-token";
   const SESSION_KEY = "cms-signed-in";
 
@@ -155,12 +193,18 @@ const Store = (() => {
 
   /* ---------- Public API ---------- */
   return {
-    mode,
+    get mode() { return mode; },
     repo,
     branch,
+    init,
 
     // Visitors get the published file; a signed-in editor gets the latest version from GitHub
     async loadContent() {
+      await init();
+      if (mode === "server" && session.signedIn) {
+        try { return await call("content"); }
+        catch (e) { console.warn("Couldn't load from the server, using published content", e); }
+      }
       if (mode === "github" && token) {
         try { return JSON.parse(await gh(`/contents/content.json?ref=${branch}`, { raw: true })); }
         catch (e) { console.warn("Couldn't load from GitHub, using published content", e); }
@@ -173,16 +217,24 @@ const Store = (() => {
     },
 
     async saveContent(content) {
+      if (mode === "server") return call("publish", content);
       if (mode === "github") return commitToGitHub(content);
       return idb("readwrite", (s) => s.put(structuredClone(content), "content"));
     },
 
     isSignedIn() {
+      if (mode === "server") return !!session.signedIn;
       if (mode === "github") return !!token;
       try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch (e) { return false; }
     },
 
-    async signIn(newToken) {
+    async signIn(secret) {
+      if (mode === "server") {
+        await call("login", { password: secret || "" });
+        session.signedIn = true;
+        return;
+      }
+      const newToken = secret;
       if (mode === "github") {
         token = (newToken || "").trim();
         try {
@@ -199,10 +251,22 @@ const Store = (() => {
     },
 
     async signOut() {
+      if (mode === "server") { try { await call("logout", {}); } catch (e) {} session.signedIn = false; return; }
       token = null;
       try { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
     },
 
     uploadImage: (file) => resizeImage(file),
+
+    // Password set-up and reset (server mode)
+    hasPassword: () => !!session.hasPassword,
+    resetEmail: () => session.email,
+    requestReset: () => call("requestReset", {}),
+    async resetPassword({ resetToken, githubToken, password }) {
+      await call("reset", { resetToken, githubToken, password });
+      session.signedIn = true;
+      session.hasPassword = true;
+    },
+    changePassword: (current, password) => call("changePassword", { current, password }),
   };
 })();

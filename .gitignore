@@ -1,2 +1,5 @@
 .DS_Store
 .claude/
+# Written on the server only — never commit these
+api/config.php
+api/data/

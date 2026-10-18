@@ -531,3 +531,11 @@ body.cms-open:not(.cms-collapsed) :is(#signInBtn, #themeToggle) { cursor: pointe
 .cms-seg4 { grid-template-columns: repeat(4, 1fr); }
 .cms-seg4 button { font-size: .75rem; padding: 6px 2px; }
 .cms-logo-edit { gap: 12px; }
+
+/* Sign-in dialog: messages and links */
+.cms-ok { color: var(--c-dev); font-size: .85rem; margin: -8px 0 14px; }
+.cms-ok:empty { display: none; }
+.cms-dialog-actions { align-items: center; flex-wrap: wrap; }
+.cms-dialog-links { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-right: auto; }
+.cms-dialog .cms-field small { color: var(--muted); font-size: .75rem; }
+.cms-dialog .cms-field input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: inherit; }
