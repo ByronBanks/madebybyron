@@ -51,7 +51,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   backdrop-filter: blur(12px);
 }
 .logo { font-weight: 800; font-size: 1.15rem; letter-spacing: -.02em; }
-.logo em { font-family: var(--serif); font-weight: 400; font-size: 1.35rem; }
+.logo :is(em, .serif) { font-family: var(--serif); font-weight: 400; font-size: 1.17em; }
+.nav.nav-static { position: relative; }
 .nav-links { display: flex; gap: clamp(12px, 2.5vw, 32px); align-items: center; font-weight: 500; font-size: .95rem; }
 .nav-links a { position: relative; }
 .nav-links a::after {

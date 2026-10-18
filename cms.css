@@ -520,3 +520,9 @@ body.cms-open:not(.cms-collapsed) .cms-toast { left: calc(50% + var(--cms-w) / 2
 .cms-hist:disabled { opacity: .3; cursor: default; }
 .cms-hist:not(:disabled):hover { border-color: var(--fg); }
 .cms-toast small { opacity: .5; font-size: .75rem; margin-left: -8px; }
+
+/* Menu bar while editing: hover outline and pointer */
+body.cms-open:not(.cms-collapsed) .nav { cursor: pointer; }
+body.cms-open:not(.cms-collapsed) :is(#signInBtn, #themeToggle) { cursor: pointer; }
+.nav.cms-hover, .nav .cms-hover { outline: 2px dashed rgb(47 107 255 / .7); outline-offset: 3px; border-radius: 4px; }
+.nav.cms-hover { outline-offset: -4px; }

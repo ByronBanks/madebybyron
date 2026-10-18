@@ -341,15 +341,17 @@
     hovered = null;
     hoverLabel.hidden = true;
   }
+  const inMenuBar = (el) => el?.closest?.(".nav") && !el.closest("#signInBtn, #themeToggle");
   document.addEventListener("mouseover", (e) => {
-    if (!editing() || !inPage(e.target)) return clearHover();
-    // Highlight what a click would open: a project, a service, a part or the section
-    const el = e.target.closest(".card, .service") || e.target.closest(".part") || e.target.closest("main > section");
+    if (!editing() || !(inPage(e.target) || inMenuBar(e.target))) return clearHover();
+    // Highlight what a click would open: a menu link, the menu, a project, a service, a part or the section
+    const el = inMenuBar(e.target) ? (e.target.closest(".nav-links a, .logo") || e.target.closest(".nav"))
+      : e.target.closest(".card, .service") || e.target.closest(".part") || e.target.closest("main > section");
     if (!el || el === hovered) return;
     clearHover();
     hovered = el;
     el.classList.add("cms-hover");
-    hoverLabel.textContent = describeHover(el);
+    hoverLabel.textContent = el.closest(".nav") ? (el.matches(".nav-links a") ? `Menu item · ${el.textContent}` : el.matches(".logo") ? "Logo" : "Menu") : describeHover(el);
     const r = el.getBoundingClientRect();
     hoverLabel.style.left = Math.max(4, r.left) + "px";
     hoverLabel.style.top = Math.max(4, r.top - 22) + "px";
@@ -432,6 +434,12 @@
 
   // While editing, a click on the page selects instead of following links or pressing buttons
   document.addEventListener("click", (e) => {
+    if (editing() && inMenuBar(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenuEditor(e.target.closest(".nav-links a")?.dataset.iid);
+      return;
+    }
     if (!editing() || !inPage(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -602,6 +610,7 @@
     else input = h("input", { type, value });
     if (type === "textarea") input.value = value;
     input.dataset.path = path;
+    if (opts.list) input.setAttribute("list", opts.list);
     input.addEventListener("input", () => {
       setPath(draft, path, opts.parse ? opts.parse(input.value) : type === "number" ? Number(input.value) : input.value);
       opts.onInput?.();
@@ -960,6 +969,46 @@
     return null;
   }
 
+  /* ---------- Menu: logo, links and how the bar looks ---------- */
+  const menuLabelFor = (s) => draft?.menu?.items?.find((it) => it.link === `#${s.id}`)?.label || "";
+  const menuItemStyle = (it) => ({ box: `.nav [data-iid="${it.id}"]`, text: true, size: true });
+
+  function menuEditor() {
+    draft.menu ??= { logo: "made by *byron*", sticky: true, items: [] };
+    // Suggestions for links: every section on the page
+    const links = h("datalist", { id: "cms-menu-links" },
+      draft.sections.map((s) => h("option", { value: `#${s.id}` }, sectionLabel(s))),
+      h("option", { value: "#top" }, "Top of the page"));
+    return [
+      links,
+      field("menu.logo", "Logo text", { hint: "Wrap words in *asterisks* for the italic serif, e.g. made by *byron*" }),
+      h("span", { class: "cms-label" }, "Menu items — drag ⠿ to reorder"),
+      listEditor("menu.items", [
+        ["label", "Label"],
+        ["link", "Link", { list: "cms-menu-links", hint: "Pick a section (#work…) or type a web address" }],
+        ["newTab", "Opens in", { type: "select", options: [[false, "The same tab"], [true, "A new tab"]], parse: (v) => v === "true" }],
+      ], "+ Add menu item", { label: "New link", link: "#top" }, menuItemStyle),
+      field("menu.sticky", "When scrolling", { type: "select", options: [[true, "Stay at the top"], [false, "Scroll away"]], parse: (v) => v === "true" }),
+      styleEditor("menu.css", { box: ".nav", textSel: ".nav .nav-links a", text: true, size: false,
+        sizes: [["logoSize", "Logo size", ".logo"], ["linkSize", "Link size", ".nav-links a"]] }),
+    ];
+  }
+
+  // Clicking the menu bar on the page opens this group (and the clicked item)
+  function openMenuEditor(itemId) {
+    openGroup = "Menu";
+    const i = (draft.menu?.items || []).findIndex((it) => it.id === itemId);
+    if (i >= 0) openListItem["menu.items"] = i;
+    current = { section: null, part: null };
+    buildOverview();
+    showView("overview");
+    markCurrent();
+    setCollapsed(false);
+    const target = i >= 0 ? overviewView.querySelector(`.cms-section[open] .cms-list-item[data-item="${i}"]`) : overviewView.querySelector(".cms-section[open]");
+    target?.scrollIntoView({ block: "nearest" });
+    if (i >= 0) target?.querySelector('input:not([type="file"]):not([type="color"])')?.focus({ preventScroll: true });
+  }
+
   /* ---------- Overview: all sections, projects, style changes ---------- */
   function overviewSection(title, ...kids) {
     const d = h("details", { class: "cms-section", open: openGroup === title },
@@ -973,6 +1022,7 @@
     const scroll = overviewView.scrollTop;
     overviewView.replaceChildren(
       h("p", { class: "cms-tip" }, "Tip: click anything on the page to edit it, press Delete to remove it, or right-click for more."),
+      overviewSection("Menu", menuEditor()),
       overviewSection("Page sections", sectionsList()),
       overviewSection("Projects", projectsEditor()),
       overviewSection("Style changes", styleChangesList()));
@@ -994,7 +1044,7 @@
           h("button", { type: "button", class: "cms-sec-open", onclick: () => showSection(s.id) },
             h("span", { class: "cms-sec-num" }, String(i + 1)),
             h("span", { class: "cms-sec-name" }, h("b", {}, sectionKind(s)), h("span", {}, sectionTitle(s))),
-            s.menu ? h("span", { class: "cms-sec-menu", title: "In the top menu" }, s.menu) : null,
+            menuLabelFor(s) ? h("span", { class: "cms-sec-menu", title: "In the top menu" }, menuLabelFor(s)) : null,
             h("span", { class: "cms-chev", "aria-hidden": "true" }, "›")),
           h("span", { class: "cms-sec-moves" },
             h("button", { type: "button", class: "cms-icon", title: "Move section up", "aria-label": "Move section up", disabled: i === 0, onclick: () => move(i, -1) }, "↑"),
@@ -1229,8 +1279,18 @@
         isBanner ? null : partsList(s, `sections.${si}`, { top: true }),
         h("details", { class: "cms-more-opts cms-menu-opts", ontoggle: (e) => { if (e.target.open) { collapseParts(); closeSettings(); } } }, h("summary", {}, "Menu & link"),
           h("div", { class: "cms-section-body" },
-            field(p + "menu", "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),
-            h("small", { class: "cms-note" }, "Link to this section with ", h("code", {}, "#" + s.id)))),
+            menuLabelFor(s)
+              ? h("div", { class: "cms-row" },
+                h("span", { class: "cms-note" }, `In the top menu as “${menuLabelFor(s)}”`),
+                h("button", { type: "button", class: "cms-btn small", onclick: () => {
+                  draft.menu.items = draft.menu.items.filter((it) => it.link !== `#${s.id}`);
+                  changed(); buildSectionView();
+                } }, "Remove"))
+              : h("button", { type: "button", class: "cms-btn small", onclick: () => {
+                (draft.menu.items ||= []).push({ id: Site.newItemId(), label: Site.presets[s.kind] ? sectionKind(s) : sectionTitle(s) || "Section", link: `#${s.id}` });
+                changed(); buildSectionView();
+              } }, "+ Add to top menu"),
+            h("small", { class: "cms-note" }, "Link to this section with ", h("code", {}, "#" + s.id), ". Rename or reorder menu items under All sections → Menu."))),
         h("div", { class: "cms-row" },
           h("button", { type: "button", class: "cms-btn small", onclick: () => duplicateSection(si) }, "Duplicate section"),
           h("button", { type: "button", class: "cms-btn small danger", onclick: () => removeSection(si) }, "Delete section"))));

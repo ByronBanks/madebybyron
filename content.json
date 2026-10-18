@@ -1,9 +1,34 @@
 {
+  "menu": {
+    "logo": "made by *byron*",
+    "sticky": true,
+    "items": [
+      {
+        "id": "iu3cp57",
+        "label": "Work",
+        "link": "#work"
+      },
+      {
+        "id": "iponxd6",
+        "label": "Services",
+        "link": "#services"
+      },
+      {
+        "id": "it8dtyf",
+        "label": "About",
+        "link": "#about"
+      },
+      {
+        "id": "iizinqb",
+        "label": "Contact",
+        "link": "#contact"
+      }
+    ]
+  },
   "sections": [
     {
       "id": "hero",
       "kind": "hero",
-      "menu": "",
       "look": "hero",
       "layout": "stack",
       "align": "left",
@@ -39,7 +64,6 @@
     {
       "id": "banner",
       "kind": "banner",
-      "menu": "",
       "look": "plain",
       "layout": "banner",
       "align": "left",
@@ -49,7 +73,6 @@
     {
       "id": "work",
       "kind": "work",
-      "menu": "Work",
       "look": "plain",
       "layout": "stack",
       "align": "left",
@@ -72,7 +95,6 @@
     {
       "id": "services",
       "kind": "services",
-      "menu": "Services",
       "look": "plain",
       "layout": "stack",
       "align": "left",
@@ -116,7 +138,6 @@
     {
       "id": "about",
       "kind": "about",
-      "menu": "About",
       "look": "plain",
       "layout": "split",
       "align": "left",
@@ -156,7 +177,6 @@
     {
       "id": "contact",
       "kind": "contact",
-      "menu": "Contact",
       "look": "dark",
       "layout": "stack",
       "align": "left",

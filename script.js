@@ -84,6 +84,16 @@ function quickCSS(c) {
     const d = decls.filter(([, v]) => has(v) && SAFE(String(v))).map(([p, v]) => `  ${p}: ${v} !important;`);
     if (d.length) out.push(`${sel} {\n${d.join("\n")}\n}`);
   };
+  // Top menu
+  const mk = c.menu?.css || {};
+  rule(".nav", boxDecls(mk));
+  rule(".nav :is(.logo, .nav-links a)", [["color", mk.color], ["font-family", FONTS[mk.font]]]);
+  if (has(mk.logoSize)) rule(".nav .logo", [["font-size", px(mk.logoSize)]]);
+  if (has(mk.linkSize)) rule(".nav .nav-links a", [["font-size", px(mk.linkSize)]]);
+  for (const it of c.menu?.items || []) {
+    if (it.css) rule(`.nav [data-iid="${it.id}"]`, [...boxDecls(it.css), ...textDecls(it.css)]);
+  }
+
   for (const s of c.sections || []) {
     const q = s.css || {};
     rule(`#${s.id}`, [...boxDecls(q), ["color", q.color], ["font-family", FONTS[q.font]]]);
@@ -266,6 +276,16 @@ function upgradeContent(c) {
   }
   // v2: each section type had fixed fields → v3: every section is a list of parts
   c.sections = c.sections.map((s) => (Array.isArray(s.parts) ? s : partsFromV2(s)));
+  // The top menu used to come from each section's "menu" label; now it is its own list
+  if (!c.menu || typeof c.menu !== "object") {
+    c.menu = {
+      logo: "made by *byron*",
+      sticky: true,
+      items: c.sections.filter((s) => s.menu).map((s) => ({ id: newItemId(), label: s.menu, link: `#${s.id}` })),
+    };
+  }
+  for (const s of c.sections) delete s.menu;
+  for (const it of c.menu.items ||= []) it.id ??= newItemId();
   // Every part needs a stable id so its styles follow it when it moves
   for (const s of c.sections) {
     // Older simple settings → the fuller style model
@@ -421,9 +441,12 @@ function render(c) {
     el.querySelectorAll(".part-projects").forEach(renderGrid);
   }
 
-  // Top menu, from sections that have a menu label
-  $("navMenu").innerHTML = c.sections.filter((s) => s.menu)
-    .map((s) => `<a href="#${esc(s.id)}">${esc(s.menu)}</a>`).join("");
+  // Top menu: logo, links and settings from content.menu
+  const m = c.menu || {};
+  $("logo").innerHTML = rich(m.logo ?? "made by *byron*");
+  $("navMenu").innerHTML = (m.items || []).filter((it) => it.label)
+    .map((it) => `<a href="${esc(safeUrl(it.link))}" data-iid="${esc(it.id)}"${it.newTab ? ' target="_blank" rel="noopener"' : ""}>${esc(it.label)}</a>`).join("");
+  document.querySelector(".nav").classList.toggle("nav-static", m.sticky === false);
 }
 
 // Project filters (any projects grid)
