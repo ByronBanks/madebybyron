@@ -297,3 +297,10 @@ select.insp-input { border-color: var(--line); background: var(--bg); cursor: po
 .cms-add-section { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--line); }
 .cms-add-section select { width: 100%; font: inherit; color: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
 .cms-note code { font-size: .75rem; }
+
+/* Segmented buttons (alignment) */
+.cms-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 9px; background: var(--card); border: 1px solid var(--line); }
+.cms-seg button { padding: 6px 4px; border-radius: 7px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.cms-seg button:hover { color: var(--fg); }
+.cms-seg button.on { background: var(--fg); color: var(--bg); }
+.cms-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

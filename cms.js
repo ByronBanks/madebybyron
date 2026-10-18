@@ -306,7 +306,7 @@
   /* ---------- Field builders ---------- */
   function field(path, label, opts = {}) {
     const { type = "text", hint, rows = 3, options } = opts;
-    const value = getPath(draft, path) ?? "";
+    const value = opts.value ? opts.value(getPath(draft, path) ?? "") : getPath(draft, path) ?? "";
     let input;
     if (type === "textarea") input = h("textarea", { rows }, value);
     else if (type === "select") input = h("select", {}, options.map(([v, l]) => h("option", { value: String(v), selected: String(v) === String(value) }, l)));
@@ -462,16 +462,19 @@
       field(p + "eyebrow", "Small line above"),
       field(p + "heading", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
       field(p + "body", "Text", { type: "textarea", rows: 6, hint: "Leave a blank line between paragraphs." }),
-      field(p + "align", "Alignment", { type: "select", options: [["left", "Left"], ["center", "Centre"]] }),
     ],
     image: (p) => [
       imageField(p + "image", "Image"),
       field(p + "caption", "Caption"),
-      field(p + "width", "Width", { type: "select", options: [["contained", "Page width"], ["narrow", "Narrow"], ["full", "Edge to edge"]] }),
+      field(p + "width", "Size", { type: "select", options: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["contained", "Page width"], ["full", "Edge to edge"]],
+        value: (v) => (v === "narrow" ? "medium" : v) }),
     ],
     split: (p) => [
       imageField(p + "image", "Image"),
-      field(p + "side", "Image side", { type: "select", options: [["right", "Right"], ["left", "Left"]] }),
+      h("div", { class: "cms-grid3" },
+        field(p + "side", "Image side", { type: "select", options: [["right", "Right"], ["left", "Left"]] }),
+        field(p + "ratio", "Image size", { type: "select", options: [["third", "1/3"], ["half", "1/2"], ["two-thirds", "2/3"]] }),
+        field(p + "valign", "Line up", { type: "select", options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] })),
       field(p + "heading", "Heading", { type: "textarea", rows: 2, hint: RICH_HINT }),
       field(p + "body", "Text", { type: "textarea", rows: 5, hint: "Leave a blank line between paragraphs." }),
       h("div", { class: "cms-grid2" }, field(p + "cta", "Button text"), field(p + "ctaLink", "Button link")),
@@ -492,6 +495,18 @@
     return String(t).replace(/\*/g, "").replace(/\n/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
   };
   const showOnPage = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // Left / Centre / Right buttons for a section
+  function alignControl(i) {
+    const s = draft.sections[i];
+    const label = s.type === "image" ? "Position" : "Alignment";
+    const group = h("div", { class: "cms-seg", role: "radiogroup", "aria-label": label });
+    const draw = () => group.replaceChildren(...[["left", "Left", "⇤"], ["center", "Centre", "↔"], ["right", "Right", "⇥"]].map(([v, l, icon]) =>
+      h("button", { type: "button", role: "radio", "aria-checked": String(Site.alignOf(s) === v), class: Site.alignOf(s) === v ? "on" : "",
+        onclick: () => { s.align = v; draw(); changed(); } }, h("span", { "aria-hidden": "true" }, icon), " ", l)));
+    draw();
+    return h("div", { class: "cms-field" }, h("span", {}, label), group);
+  }
 
   function sectionsEditor() {
     const wrap = h("div", { class: "cms-list" });
@@ -547,6 +562,7 @@
               h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move down", disabled: i === n - 1,
                 onclick: (e) => { e.preventDefault(); move(i, 1); } }, "↓"))),
           h("div", { class: "cms-section-body" },
+            type && type.align !== null ? alignControl(i) : null,
             type ? SECTION_FIELDS[s.type]?.(p) : h("p", { class: "cms-note" }, `Unknown section type “${s.type}”.`),
             h("div", { class: "cms-subgroup" },
               field(p + "menu", "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),

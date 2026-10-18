@@ -199,13 +199,13 @@ main > section { scroll-margin-top: 72px; }
 /* Text section */
 .text-block .prose { max-width: 720px; margin-top: 24px; display: grid; gap: 1em; font-size: 1.15rem; color: var(--muted); }
 .text-block .eyebrow { margin-bottom: 16px; }
-.text-block.align-center { text-align: center; }
-.text-block.align-center .prose { margin-inline: auto; }
 
 /* Image section */
 .image-block { padding: clamp(32px, 5vw, 64px) var(--gutter); }
 .image-block.width-full { padding-inline: 0; }
-.image-block.width-narrow figure { max-width: 760px; margin-inline: auto; }
+.image-block.width-small figure { max-width: 480px; }
+.image-block.width-medium figure, .image-block.width-narrow figure { max-width: 760px; }
+.image-block.width-large figure { max-width: 1100px; }
 .image-block img { display: block; width: 100%; height: auto; border-radius: 16px; }
 .image-block.width-full img { border-radius: 0; }
 .image-block figcaption { margin-top: 12px; font-size: .9rem; color: var(--muted); }
@@ -216,9 +216,14 @@ main > section { scroll-margin-top: 72px; }
 }
 
 /* Text + image section */
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 96px); align-items: center; }
+.split { --m: 1fr; --t: 1fr; display: grid; grid-template-columns: var(--t) var(--m); gap: clamp(32px, 6vw, 96px); align-items: center; }
+.split.image-left { grid-template-columns: var(--m) var(--t); }
 .split.image-left .split-media { order: -1; }
 .split.image-right .split-media { order: 1; }
+.split.ratio-third { --m: 1fr; --t: 2fr; }
+.split.ratio-two-thirds { --m: 2fr; --t: 1fr; }
+.split.valign-top { align-items: start; }
+.split.valign-bottom { align-items: end; }
 .split-media {
   aspect-ratio: 4 / 3; border-radius: 16px;
   background: linear-gradient(135deg, var(--c-photo), var(--c-dev));
@@ -239,17 +244,43 @@ main > section { scroll-margin-top: 72px; }
 /* Call to action section */
 .cta-block {
   margin: clamp(32px, 5vw, 64px) var(--gutter); padding: clamp(40px, 7vw, 96px);
-  border-radius: 24px; text-align: center;
+  border-radius: 24px;
   background: color-mix(in srgb, var(--c-studio) 18%, var(--card));
 }
 .cta-block h2 { font-size: clamp(2rem, 5vw, 4rem); letter-spacing: -.035em; line-height: 1; font-weight: 800; }
-.cta-block p { max-width: 560px; margin: 16px auto 28px; color: var(--muted); font-size: 1.1rem; }
+.cta-block p { max-width: 560px; margin: 16px 0 28px; color: var(--muted); font-size: 1.1rem; }
+
+/* Section alignment (Left / Centre / Right in the editor) */
+main > section.align-center { text-align: center; }
+main > section.align-right { text-align: right; }
+
+/* Blocks with a max width move with the text */
+:is(.align-center) :is(.prose, .cta-block p, .quote-block blockquote, .image-block figure, .hero-foot > p) { margin-inline: auto; }
+:is(.align-right) :is(.prose, .cta-block p, .quote-block blockquote, .image-block figure, .hero-foot > p) { margin-left: auto; margin-right: 0; }
+.image-block.align-left figure { margin-right: auto; }
+
+/* Rows of items line up the same way */
+.align-center :is(.filters, .clients, .socials) { justify-content: center; }
+.align-right :is(.filters, .clients, .socials) { justify-content: flex-end; }
+
+/* Hero: intro and button stack under each other when not left-aligned */
+.hero.align-center .hero-foot, .hero.align-right .hero-foot { flex-direction: column; }
+.hero.align-center .hero-foot { align-items: center; }
+.hero.align-right .hero-foot { align-items: flex-end; }
+
+/* Projects grid heading */
+.section.align-center .section-head { flex-direction: column; align-items: center; }
+.section.align-right .section-head { flex-direction: column; align-items: flex-end; }
+
+/* Services and cards keep reading left-to-right inside, but follow the section */
+.align-center .service { text-align: center; }
+.align-right .service { text-align: right; }
 
 /* Responsive */
 @media (max-width: 900px) {
   .grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 260px; }
   .services { grid-template-columns: repeat(2, 1fr); }
-  .about, .split { grid-template-columns: 1fr; }
+  .about, .split, .split.image-left { grid-template-columns: 1fr; }
   .split .split-media { order: -1 !important; }
   .about-portrait { max-width: 360px; }
 }

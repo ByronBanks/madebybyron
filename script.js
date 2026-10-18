@@ -85,6 +85,7 @@ const SECTION_TYPES = {
   },
   marquee: {
     label: "Scrolling banner",
+    align: null, // no alignment option
     defaults: { items: "First thing, Second thing, Third thing" },
     html: (s) => {
       const items = list(s.items).map((m) => `<span>${esc(m)}</span><i>✦</i>`).join("");
@@ -148,9 +149,9 @@ const SECTION_TYPES = {
   },
   text: {
     label: "Text",
-    defaults: { eyebrow: "", heading: "A new *section*", body: "Write a paragraph here.\n\nLeave a blank line to start a new paragraph.", align: "left" },
+    defaults: { eyebrow: "", heading: "A new *section*", body: "Write a paragraph here.\n\nLeave a blank line to start a new paragraph." },
     html: (s) => `
-      <section class="section text-block align-${esc(s.align || "left")}">
+      <section class="section text-block">
         ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ""}
         ${s.heading ? `<h2>${rich(s.heading)}</h2>` : ""}
         <div class="prose">${paras(s.body)}</div>
@@ -158,7 +159,7 @@ const SECTION_TYPES = {
   },
   image: {
     label: "Image",
-    defaults: { image: "", caption: "", width: "contained" },
+    defaults: { image: "", caption: "", width: "large" },
     html: (s) => `
       <section class="image-block width-${esc(s.width || "contained")}">
         <figure>
@@ -169,9 +170,9 @@ const SECTION_TYPES = {
   },
   split: {
     label: "Text + image",
-    defaults: { image: "", heading: "Text beside an *image*", body: "Tell the story behind a project, a process or a client.", side: "right", cta: "", ctaLink: "" },
+    defaults: { image: "", heading: "Text beside an *image*", body: "Tell the story behind a project, a process or a client.", side: "right", valign: "middle", ratio: "half", cta: "", ctaLink: "" },
     html: (s) => `
-      <section class="section split image-${esc(s.side || "right")}">
+      <section class="section split image-${esc(s.side || "right")} valign-${esc(s.valign || "middle")} ratio-${esc(s.ratio || "half")}">
         <div class="split-media" data-bg="${esc(s.image)}"></div>
         <div class="split-text">
           ${s.heading ? `<h2>${rich(s.heading)}</h2>` : ""}
@@ -193,6 +194,7 @@ const SECTION_TYPES = {
   },
   cta: {
     label: "Call to action",
+    align: "center",
     defaults: { heading: "Ready to *start*?", text: "Tell me about your project and I'll get back to you within a day.", cta: "Get in touch", ctaLink: "#contact" },
     html: (s) => `
       <section class="cta-block">
@@ -202,6 +204,10 @@ const SECTION_TYPES = {
       </section>`,
   },
 };
+
+// Left / center / right for a section (each type has its own default)
+const ALIGNS = ["left", "center", "right"];
+const alignOf = (s) => (ALIGNS.includes(s.align) ? s.align : SECTION_TYPES[s.type]?.align || "left");
 
 const newSectionId = (type) => `${type}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -266,6 +272,7 @@ function render(c) {
     const el = tpl.content.firstElementChild;
     el.id = s.id;
     el.dataset.section = s.type;
+    if (type.align !== null) el.classList.add(`align-${alignOf(s)}`);
     main.append(el);
     el.querySelectorAll("[data-bg]").forEach((b) => b.dataset.bg && setImage(b, b.dataset.bg));
     const r = el.querySelector(".rotator");
@@ -329,6 +336,7 @@ const Site = {
   applyStyles,
   upgradeContent,
   types: SECTION_TYPES,
+  alignOf,
   newSectionId,
   ready: Store.loadContent().then((c) => { render(c); return c; }),
 };
