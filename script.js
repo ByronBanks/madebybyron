@@ -89,7 +89,7 @@ function quickCSS(c) {
     rule(`#${s.id}`, [...boxDecls(q), ["color", q.color], ["font-family", FONTS[q.font]]]);
     // Section text colour reaches its parts (a part's own colour, written later, still wins)
     rule(`:where(#${s.id}) .part > *`, [["color", q.color]]);
-    for (const p of s.parts || []) {
+    eachPart(s.parts, (p) => {
       const k = p.css || {};
       const sel = `[data-pid="${p.id}"]`;
       rule(sel, boxDecls(k));
@@ -105,9 +105,17 @@ function quickCSS(c) {
         if (has(t.titleSize)) rule(`${isel} h3`, [["font-size", px(t.titleSize)]]);
         if (has(t.textSize)) rule(`${isel} p`, [["font-size", px(t.textSize)]]);
       }
-    }
+    });
   }
   return out.join("\n");
+}
+
+// Visit every part, including parts inside boxes
+function eachPart(parts, fn, parent = null) {
+  for (const p of parts || []) {
+    fn(p, parent);
+    if (Array.isArray(p.parts)) eachPart(p.parts, fn, p);
+  }
 }
 
 // Accepts the whole content (simple settings + CSS edits)
@@ -191,6 +199,26 @@ const PART_TYPES = {
         <p>${esc(it.text)}</p>
       </article>`).join("")}</div>`,
   },
+  box: {
+    label: "Box (container)", defaults: { parts: [], dir: "down", align: "", gap: "" },
+    html: (p) => {
+      const dir = pick(p.dir, ["down", "across"], "down");
+      const align = pick(p.align, ["", "left", "center", "right"], "");
+      const gap = /^\d+$/.test(String(p.gap ?? "")) ? ` style="--gap:${p.gap}px"` : "";
+      const inner = (p.parts || []).length ? partsHTML(p.parts) : `<div class="box-empty">Empty box — right-click to add things inside</div>`;
+      return `<div class="box dir-${dir}${align ? ` box-${align}` : ""}"${gap}>${inner}</div>`;
+    },
+  },
+  table: {
+    label: "Table", defaults: { rows: [["Heading", "Heading"], ["Text", "Text"], ["Text", "Text"]], header: true },
+    html: (p) => {
+      const rows = Array.isArray(p.rows) ? p.rows : [];
+      const cell = (tag, t) => `<${tag}>${rich(t)}</${tag}>`;
+      const head = p.header !== false && rows.length ? `<thead><tr>${rows[0].map((t) => cell("th", t)).join("")}</tr></thead>` : "";
+      const body = (p.header !== false ? rows.slice(1) : rows).map((r) => `<tr>${r.map((t) => cell("td", t)).join("")}</tr>`).join("");
+      return `<div class="tbl-wrap"><table class="tbl">${head}<tbody>${body}</tbody></table></div>`;
+    },
+  },
   spacer: {
     label: "Space", defaults: { size: "m" },
     html: (p) => `<div class="spacer spacer-${pick(p.size, ["s", "m", "l"], "m")}" aria-hidden="true"></div>`,
@@ -244,7 +272,7 @@ function upgradeContent(c) {
     const q = s.css;
     if (q?.background !== undefined) { q.bg ??= q.background; delete q.background; }
     if (q?.padY !== undefined) { q.padT ??= q.padY; q.padB ??= q.padY; delete q.padY; }
-    for (const p of s.parts) {
+    eachPart(s.parts, (p) => {
       p.id ??= newPartId();
       if (p.css?.padding !== undefined) {
         for (const side of ["padT", "padR", "padB", "padL"]) p.css[side] ??= p.css.padding;
@@ -252,7 +280,7 @@ function upgradeContent(c) {
       }
       // Items in a list (services, links) get ids so their styles follow them when reordered
       if (Array.isArray(p.items)) for (const it of p.items) if (it && typeof it === "object") it.id ??= newItemId();
-    }
+    });
   }
   return c;
 }
@@ -348,6 +376,11 @@ function renderGrid(holder) {
 
 const ALIGNS = ["left", "center", "right"];
 
+function partsHTML(parts) {
+  return (parts || []).map((p) => PART_TYPES[p.type]
+    ? `<div class="part part-${p.type}" data-pid="${esc(p.id)}">${PART_TYPES[p.type].html(p)}</div>` : "").join("");
+}
+
 function sectionHTML(s) {
   const layout = pick(s.layout, ["stack", "split", "banner"], "stack");
   const look = pick(s.look, ["plain", "hero", "dark", "card"], "plain");
@@ -355,8 +388,7 @@ function sectionHTML(s) {
     const items = list(s.items).map((m) => `<span>${esc(m)}</span><i>✦</i>`).join("");
     return `<section class="marquee" aria-hidden="true"><div class="marquee-track">${items + items}</div></section>`;
   }
-  const parts = (s.parts || []).map((p, i) => PART_TYPES[p.type]
-    ? `<div class="part part-${p.type}" data-pid="${esc(p.id)}">${PART_TYPES[p.type].html(p)}</div>` : "").join("");
+  const parts = partsHTML(s.parts);
   const cls = `sec look-${look} layout-${layout} align-${pick(s.align, ALIGNS, "left")}`;
   if (layout === "split") {
     return `<section class="${cls} media-${pick(s.side, ["left", "right"], "right")} ratio-${pick(s.ratio, ["third", "two-fifths", "half", "three-fifths", "two-thirds"], "half")} valign-${pick(s.valign, ["top", "middle", "bottom"], "middle")}">
@@ -450,6 +482,7 @@ const Site = {
   makePart: part,
   newPartId,
   newItemId,
+  eachPart,
   fonts: FONTS,
   newSectionId,
   ready: Store.loadContent().then((c) => { render(c); return c; }),

@@ -274,3 +274,29 @@ main > section { scroll-margin-top: 72px; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   html { scroll-behavior: auto; }
 }
+
+/* ---------- Box (container) and Table parts ---------- */
+.part-box { align-self: stretch; }
+.box { --gap: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--gap); min-width: 0; }
+.box.dir-across { flex-direction: row; flex-wrap: wrap; align-items: stretch; }
+.box.dir-across > .part { flex: 1 1 220px; min-width: 0; }
+.box.box-left { align-items: flex-start; text-align: left; }
+.box.box-center { align-items: center; text-align: center; }
+.box.box-right { align-items: flex-end; text-align: right; }
+.box.dir-across.box-center { justify-content: center; }
+.box.dir-across.box-right { justify-content: flex-end; }
+.align-center .box:not(.box-left):not(.box-right) { align-items: center; }
+.align-right .box:not(.box-left):not(.box-center) { align-items: flex-end; }
+.box > .part-box, .box > .part-table, .box > .part-image:has(.img-page, .img-full) { align-self: stretch; }
+.box-empty { display: none; }
+body.cms-open:not(.cms-collapsed) .box-empty {
+  display: block; width: 100%; padding: 18px; text-align: center; font-size: .85rem; color: var(--muted);
+  border: 2px dashed var(--line); border-radius: 10px;
+}
+
+.part-table { align-self: stretch; }
+.tbl-wrap { overflow-x: auto; font-size: 1rem; }
+.tbl { width: 100%; border-collapse: collapse; font-size: inherit; }
+.tbl th, .tbl td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: inherit; vertical-align: top; }
+.tbl th { font-weight: 700; border-bottom-width: 2px; border-bottom-color: currentColor; }
+.tbl td { color: var(--muted); }

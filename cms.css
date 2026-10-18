@@ -474,3 +474,31 @@ body.cms-open:not(.cms-collapsed) main :is(.card, .service)[draggable="true"] { 
 main .page-dragging { opacity: .35; }
 main :is(.card, .service).page-drop-before { box-shadow: -6px 0 0 -2px #2f6bff; }
 main :is(.card, .service).page-drop-after { box-shadow: 6px 0 0 -2px #2f6bff; }
+
+/* ---------- Parts inside a box ---------- */
+.cms-parts-nested { padding: 6px; margin: 0; border-radius: 9px; background: color-mix(in srgb, #2f6bff 5%, var(--bg)); border: 1px dashed color-mix(in srgb, #2f6bff 35%, var(--line)); }
+.cms-parts-nested > .cms-part { background: var(--card); }
+
+/* ---------- Table editor ---------- */
+.cms-table-grid { display: grid; gap: 4px; align-items: center; overflow-x: auto; }
+.cms-table-grid input { width: 100%; min-width: 0; font: inherit; font-size: .8rem; color: inherit; padding: 6px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); }
+.cms-table-grid input.th { font-weight: 700; background: var(--bg); }
+.cms-table-grid .cms-icon { width: 24px; height: 24px; font-size: 11px; }
+.cms-table-grid .cms-icon:disabled { opacity: .25; cursor: default; }
+.cms-col-x { justify-self: center; }
+.cms-table-add { justify-content: flex-start; }
+
+/* ---------- Right-click menu ---------- */
+.cms-menu {
+  position: fixed; z-index: 70; min-width: 220px; max-width: 280px; max-height: calc(100vh - 16px); overflow-y: auto;
+  padding: 6px; border-radius: 12px; background: var(--card); color: var(--fg);
+  border: 1px solid var(--line); box-shadow: 0 12px 40px rgb(0 0 0 / .18);
+  font-family: var(--sans); font-size: .85rem;
+}
+.cms-menu[hidden] { display: none; }
+.cms-menu-head { padding: 8px 10px 4px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cms-menu-item { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 7px; }
+.cms-menu-item:hover:not(:disabled), .cms-menu-item:focus-visible { background: color-mix(in srgb, #2f6bff 12%, transparent); outline: none; }
+.cms-menu-item:disabled { opacity: .35; cursor: default; }
+.cms-menu-item.danger { color: var(--c-design); }
+.cms-menu-sep { height: 1px; margin: 5px 4px; background: var(--line); }

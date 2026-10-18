@@ -192,6 +192,7 @@
     const changedSection = current.section !== id;
     if (changedSection || partId) settingsOpen = !partId; // clicked a part → show the part; clicked the section → its settings
     current = { section: id, part: partId };
+    if (partId) openOnly(partId);
     buildSectionView();
     showView("section");
     markCurrent();
@@ -749,7 +750,7 @@
     textSel: `[data-pid="${part.id}"] > *`,
     sizeSel: part.type === "quote" ? `[data-pid="${part.id}"] .quote-text` : part.type === "biglink" ? `[data-pid="${part.id}"] .big-link` : null,
     text: !NO_TEXT.has(part.type),
-    size: !NO_TEXT.has(part.type),
+    size: !NO_TEXT.has(part.type) && part.type !== "box",
   });
   const sectionStyle = (s) => ({ box: `#${s.id}`, textSel: `#${s.id}`, text: true, size: false });
   const serviceStyle = (it) => ({ box: `[data-iid="${it.id}"]`, textSel: `[data-iid="${it.id}"] h3`, text: true,
@@ -798,6 +799,18 @@
     ],
     services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" }, serviceStyle)],
     spacer: (p) => [field(p + "size", "Height", { type: "select", options: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] })],
+    box: (p, part, path) => [
+      h("div", { class: "cms-grid2" },
+        field(p + "dir", "Arrange contents", { type: "select", options: [["down", "Down (stacked)"], ["across", "Across (columns)"]] }),
+        field(p + "align", "Align", { type: "select", options: [["", "Like the section"], ["left", "Left"], ["center", "Centre"], ["right", "Right"]] })),
+      field(p + "gap", "Gap between items (px)", { parse: (v) => v.replace(/[^0-9]/g, ""), hint: "Empty = 20" }),
+      partsList(part, path),
+    ],
+    table: (p) => [
+      field(p + "header", "First row", { type: "select", options: [[true, "Is a header"], [false, "Is normal text"]], parse: (v) => v === "true",
+        onInput: () => setTimeout(() => buildSectionView(), 50) }),
+      tableEditor(p),
+    ],
   };
 
   const plain = (t) => String(t ?? "").replace(/\*/g, "").replace(/\n/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
@@ -806,6 +819,8 @@
     if (p.type === "image") return p.caption || (p.image ? "Image" : "No image yet");
     if (p.type === "spacer") return { s: "Small", m: "Medium", l: "Large" }[p.size] || "";
     if (p.type === "projects") return "From the Projects list";
+    if (p.type === "box") return `${(p.parts || []).length} inside · ${p.dir === "across" ? "across" : "down"}`;
+    if (p.type === "table") return `${(p.rows || []).length} rows × ${Math.max(0, ...(p.rows || []).map((r) => r.length))} columns`;
     return plain(p.text ?? p.items);
   }
   const sectionTitle = (s) => {
@@ -816,10 +831,20 @@
   };
   const sectionKind = (s) => Site.presets[s?.kind]?.label || (s?.layout === "banner" ? "Scrolling banner" : "Section");
   const sectionLabel = (s) => (s ? `${sectionKind(s)}${sectionTitle(s) ? ` “${sectionTitle(s)}”` : ""}` : "");
+  // Find a part anywhere (including inside boxes): its list, position, path and the boxes around it
   function findPart(pid) {
+    if (!pid || !draft) return null;
+    const search = (list, base, chain) => {
+      for (const [j, p] of (list || []).entries()) {
+        const path = `${base}.parts.${j}`;
+        if (p.id === pid) return { j, part: p, list, path, chain };
+        if (Array.isArray(p.parts)) { const r = search(p.parts, path, [...chain, p.id]); if (r) return r; }
+      }
+      return null;
+    };
     for (const [si, s] of draft.sections.entries()) {
-      const j = (s.parts || []).findIndex((p) => p.id === pid);
-      if (j >= 0) return { si, j, section: s, part: s.parts[j] };
+      const r = search(s.parts, `sections.${si}`, []);
+      if (r) return { si, section: s, ...r };
     }
     return null;
   }
@@ -994,8 +1019,8 @@
     ];
   }
 
-  /* ---------- Section view: one section and its parts ---------- */
-  let openPart = null;        // id of the expanded part
+  /* ---------- Section view: one section and its parts (parts can hold parts) ---------- */
+  const openSet = new Set();  // ids of expanded parts (an open part inside a box keeps the box open)
   let settingsOpen = true;    // is "Section settings" expanded
 
   // Left / Centre / Right buttons for a section
@@ -1009,7 +1034,6 @@
     return h("div", { class: "cms-field" }, h("span", {}, "Alignment"), group);
   }
 
-  let dragging = null; // index of the part being dragged
   let focusItem = null; // a project or list item clicked on the page
 
   function revealFocusItem() {
@@ -1031,11 +1055,18 @@
     target.querySelector('input:not([type="file"]):not([type="color"]), textarea')?.focus({ preventScroll: true });
   }
 
+  // Open a part (and the boxes it sits in), closing everything else
+  function openOnly(pid) {
+    openSet.clear();
+    if (!pid) return;
+    const f = findPart(pid);
+    if (f) for (const id of [...f.chain, pid]) openSet.add(id);
+  }
+
   function buildSectionView() {
     const si = draft.sections.findIndex((s) => s.id === current.section);
     const s = draft.sections[si];
-    if (current.part) openPart = current.part;
-    if (openPart && settingsOpen && current.part) settingsOpen = false;
+    if (openSet.size && settingsOpen && current.part) settingsOpen = false;
     const scroll = sectionView.scrollTop;
     const p = `sections.${si}.`;
     const isBanner = s.layout === "banner";
@@ -1082,7 +1113,7 @@
       title,
       h("div", { class: "cms-section-body cms-sv-body" },
         settings,
-        isBanner ? null : partsList(s, si),
+        isBanner ? null : partsList(s, `sections.${si}`, { top: true }),
         h("details", { class: "cms-more-opts cms-menu-opts", ontoggle: (e) => { if (e.target.open) { collapseParts(); closeSettings(); } } }, h("summary", {}, "Menu & link"),
           h("div", { class: "cms-section-body" },
             field(p + "menu", "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),
@@ -1094,25 +1125,51 @@
   }
 
   // Settings, parts and "Menu & link" behave as one accordion
-  function collapseParts(except = null) {
-    sectionView.querySelectorAll(".cms-part.open").forEach((c) => {
-      if (c.dataset.card === except) return;
-      c.classList.remove("open");
-      c.querySelector(".cms-part-body").hidden = true;
-      c.querySelector(".cms-part-title").setAttribute("aria-expanded", "false");
-    });
-    if (openPart !== except) openPart = except;
+  function closeCard(c) {
+    c.classList.remove("open");
+    c.querySelector(":scope > .cms-part-body").hidden = true;
+    c.querySelector(":scope > .cms-part-head .cms-part-title").setAttribute("aria-expanded", "false");
+    openSet.delete(c.dataset.card);
+    c.querySelectorAll(".cms-part[data-card]").forEach((x) => openSet.delete(x.dataset.card));
+  }
+  function collapseParts() {
+    sectionView.querySelectorAll(".cms-part.open").forEach(closeCard);
+    openSet.clear();
   }
   function closeSettings() {
     sectionView.querySelectorAll(".cms-settings[open], .cms-menu-opts[open]").forEach((d) => (d.open = false));
     settingsOpen = false;
   }
 
+  // A deep copy with fresh ids (and copies of any CSS edits made for the original)
+  function freshCopy(part) {
+    const copy = structuredClone(part);
+    const map = {};
+    Site.eachPart([copy], (p) => {
+      const id = Site.newPartId();
+      map[p.id] = id;
+      p.id = id;
+      if (Array.isArray(p.items)) for (const it of p.items) if (it && typeof it === "object") it.id = Site.newItemId();
+    });
+    for (const [sel, props] of Object.entries(draft.styles || {})) {
+      for (const [from, to] of Object.entries(map)) {
+        if (sel.includes(`[data-pid="${from}"]`)) draft.styles[sel.replaceAll(`[data-pid="${from}"]`, `[data-pid="${to}"]`)] = structuredClone(props);
+      }
+    }
+    return copy;
+  }
+  // Remove CSS edits that only applied to these parts
+  function dropStylesFor(part) {
+    const ids = [];
+    Site.eachPart([part], (p) => ids.push(p.id));
+    for (const sel of Object.keys(draft.styles || {})) if (ids.some((id) => sel.startsWith(`[data-pid="${id}"]`))) delete draft.styles[sel];
+  }
+
   function duplicateSection(i) {
     const copy = structuredClone(draft.sections[i]);
     copy.id = Site.newSectionId(copy.kind || "section");
     copy.menu = "";
-    for (const part of copy.parts || []) part.id = Site.newPartId();
+    copy.parts = (draft.sections[i].parts || []).map(freshCopy);
     draft.sections.splice(i + 1, 0, copy);
     changed();
     setTimeout(() => showSection(copy.id), 60);
@@ -1121,41 +1178,74 @@
     const s = draft.sections[i];
     if (!confirm(`Delete this ${sectionKind(s)} section?\n\nYou can still press Discard before publishing.`)) return;
     draft.sections.splice(i, 1);
-    for (const sel of Object.keys(draft.styles || {})) {
-      if (sel === `#${s.id}` || sel.startsWith(`#${s.id} `) || (s.parts || []).some((p) => sel.startsWith(`[data-pid="${p.id}"]`))) delete draft.styles[sel];
-    }
+    for (const sel of Object.keys(draft.styles || {})) if (sel === `#${s.id}` || sel.startsWith(`#${s.id} `)) delete draft.styles[sel];
+    for (const p of s.parts || []) dropStylesFor(p);
     changed();
     showOverview();
   }
 
-  function partsList(s, si) {
-    const box = h("div", { class: "cms-parts" });
+  // Simple table editor: a grid of cells plus add/remove rows and columns
+  function tableEditor(prefix) {
+    const path = prefix + "rows";
+    const wrap = h("div", { class: "cms-table-edit" });
+    function rebuild() {
+      if (!Array.isArray(getPath(draft, path))) setPath(draft, path, [[""]]);
+      const rows = getPath(draft, path);
+      const cols = Math.max(1, ...rows.map((r) => r.length));
+      for (const r of rows) while (r.length < cols) r.push("");
+      const header = getPath(draft, prefix + "header") !== false;
+      wrap.replaceChildren(
+        h("div", { class: "cms-table-grid", style: `grid-template-columns: repeat(${cols}, minmax(64px, 1fr)) 24px` },
+          rows.map((r, ri) => [
+            r.map((t, ci) => {
+              const input = h("input", { value: t, class: ri === 0 && header ? "th" : "", "aria-label": `Row ${ri + 1}, column ${ci + 1}`,
+                oninput: () => { getPath(draft, path)[ri][ci] = input.value; changed(); } });
+              return input;
+            }),
+            h("button", { type: "button", class: "cms-icon danger", title: "Remove row", "aria-label": `Remove row ${ri + 1}`, disabled: rows.length < 2,
+              onclick: () => { rows.splice(ri, 1); rebuild(); changed(); } }, "✕"),
+          ]),
+          Array.from({ length: cols }, (_, ci) => h("button", { type: "button", class: "cms-icon danger cms-col-x", title: "Remove column", "aria-label": `Remove column ${ci + 1}`, disabled: cols < 2,
+            onclick: () => { rows.forEach((r) => r.splice(ci, 1)); rebuild(); changed(); } }, "✕"))),
+        h("div", { class: "cms-row cms-table-add" },
+          h("button", { type: "button", class: "cms-btn small", onclick: () => { rows.push(Array(cols).fill("")); rebuild(); changed(); } }, "+ Row"),
+          h("button", { type: "button", class: "cms-btn small", onclick: () => { rows.forEach((r) => r.push("")); rebuild(); changed(); } }, "+ Column")));
+    }
+    rebuild();
+    return wrap;
+  }
+
+  // The list of parts inside a section or a box: open, reorder (drag or arrows), add, delete
+  function partsList(container, basePath, { top = false } = {}) {
+    const list = (container.parts ??= []);
+    const box = h("div", { class: "cms-parts" + (top ? "" : " cms-parts-nested") });
     const typeSelect = h("select", {}, Object.entries(Site.parts).map(([k, t]) => h("option", { value: k }, t.label)));
     const refresh = () => { changed(); buildSectionView(); };
+    let dragFrom = null;
 
     function movePart(from, to) {
-      const [moved] = s.parts.splice(from, 1);
-      s.parts.splice(to > from ? to - 1 : to, 0, moved);
+      const [moved] = list.splice(from, 1);
+      list.splice(to > from ? to - 1 : to, 0, moved);
       refresh();
     }
     function moveToSection(j, targetId) {
       const dest = draft.sections.find((x) => x.id === targetId);
       if (!dest) return;
-      const [moved] = s.parts.splice(j, 1);
+      const [moved] = list.splice(j, 1);
       (dest.parts ??= []).push(moved);
       changed();
       setTimeout(() => showSection(dest.id, moved.id), 60);
     }
 
-    s.parts.forEach((part, j) => {
-      const path = `sections.${si}.parts.${j}.`;
-      const isOpen = openPart === part.id;
+    list.forEach((part, j) => {
+      const path = `${basePath}.parts.${j}`;
+      const isOpen = openSet.has(part.id);
       const label = h("span", { class: "cms-part-preview" }, partPreview(part));
       const handle = h("span", { class: "cms-handle", title: "Drag to move", "aria-hidden": "true" }, "⠿");
-      const others = draft.sections.filter((x) => x.id !== s.id && x.layout !== "banner");
+      const others = draft.sections.filter((x) => x.id !== current.section && x.layout !== "banner");
       const body = h("div", { class: "cms-part-body", hidden: !isOpen },
-        PART_FIELDS[part.type]?.(path) || [],
-        styleEditor(`sections.${si}.parts.${j}.css`, partStyle(part)),
+        PART_FIELDS[part.type]?.(path + ".", part, path) || [],
+        styleEditor(`${path}.css`, partStyle(part)),
         others.length ? h("label", { class: "cms-field cms-move-to" }, h("span", {}, "Move to another section"),
           h("select", { onchange: (e) => e.target.value && moveToSection(j, e.target.value) },
             h("option", { value: "" }, "Choose…"),
@@ -1165,11 +1255,15 @@
           handle,
           h("button", { type: "button", class: "cms-part-title", "aria-expanded": String(isOpen), onclick: (e) => {
             const open = body.hidden;
-            if (open) { collapseParts(part.id); closeSettings(); }
+            if (open) {
+              // Accordion: close the other parts in this same list (and the section settings)
+              for (const sib of box.querySelectorAll(":scope > .cms-part.open")) if (sib !== card) closeCard(sib);
+              closeSettings();
+              openSet.add(part.id);
+            } else closeCard(card);
             body.hidden = !open;
             card.classList.toggle("open", open);
             e.currentTarget.setAttribute("aria-expanded", String(open));
-            openPart = open ? part.id : null;
             current.part = open ? part.id : current.part === part.id ? null : current.part;
             markCurrent();
             if (open) document.querySelector(`[data-pid="${part.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1179,28 +1273,31 @@
             if (el) { current.part = part.id; inspect(el.firstElementChild || el, "section"); }
           } }, "CSS"),
           h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move part up", disabled: j === 0, onclick: () => movePart(j, j - 1) }, "↑"),
-          h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move part down", disabled: j === s.parts.length - 1, onclick: () => movePart(j, j + 2) }, "↓"),
+          h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move part down", disabled: j === list.length - 1, onclick: () => movePart(j, j + 2) }, "↓"),
           h("button", { type: "button", class: "cms-icon danger", title: "Delete part", "aria-label": "Delete part", onclick: () => {
-            if (!confirm(`Delete this ${Site.parts[part.type]?.label || "part"}?`)) return;
-            s.parts.splice(j, 1);
-            for (const sel of Object.keys(draft.styles || {})) if (sel.startsWith(`[data-pid="${part.id}"]`)) delete draft.styles[sel];
+            if (!confirm(`Delete this ${Site.parts[part.type]?.label || "part"}${part.parts?.length ? " and everything inside it" : ""}?`)) return;
+            list.splice(j, 1);
+            dropStylesFor(part);
             if (current.part === part.id) current.part = null;
             refresh();
           } }, "✕")),
         body);
-      card.addEventListener("input", () => (label.textContent = partPreview(part)));
+      card.addEventListener("input", (e) => { if (e.target.closest(".cms-part") === card) label.textContent = partPreview(part); });
 
       // Drag by the handle only, so text in the fields can still be selected
-      handle.addEventListener("pointerdown", () => (card.draggable = true));
+      handle.addEventListener("pointerdown", (e) => { e.stopPropagation(); card.draggable = true; });
       card.addEventListener("dragstart", (e) => {
-        dragging = j;
+        if (e.target !== card) return;
+        e.stopPropagation();
+        dragFrom = j;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", "part");
         card.classList.add("dragging");
       });
-      card.addEventListener("dragend", () => {
+      card.addEventListener("dragend", (e) => {
+        if (e.target !== card) return;
         card.draggable = false;
-        dragging = null;
+        dragFrom = null;
         card.classList.remove("dragging");
         box.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
       });
@@ -1217,34 +1314,173 @@
       return { index: cards.length, card: cards.at(-1), where: "after" };
     };
     box.addEventListener("dragover", (e) => {
-      if (dragging == null) return;
-      e.preventDefault();
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
       e.dataTransfer.dropEffect = "move";
-      box.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+      box.querySelectorAll(":scope > .drop-before, :scope > .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
       const t = dropIndex(e);
       t.card?.classList.add(t.where === "before" ? "drop-before" : "drop-after");
     });
     box.addEventListener("drop", (e) => {
-      if (dragging == null) return;
-      e.preventDefault();
-      movePart(dragging, dropIndex(e).index);
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
+      movePart(dragFrom, dropIndex(e).index);
     });
 
-    if (!s.parts.length) box.append(h("p", { class: "cms-note cms-parts-empty" }, "This section is empty. Add a part below."));
+    if (!list.length) box.append(h("p", { class: "cms-note cms-parts-empty" }, top ? "This section is empty. Add a part below, or right-click it on the page." : "This box is empty. Add something below."));
 
     return [
-      h("span", { class: "cms-label cms-parts-label" }, "In this section — drag ⠿ to reorder"),
+      h("span", { class: "cms-label cms-parts-label" }, top ? "In this section — drag ⠿ to reorder" : "Inside this box"),
       box,
       h("div", { class: "cms-add-part" }, typeSelect,
         h("button", { type: "button", class: "cms-btn small primary", onclick: () => {
           const part = Site.makePart(typeSelect.value);
-          s.parts.push(part);
-          openPart = part.id;
+          list.push(part);
           settingsOpen = false;
           current.part = part.id;
+          openOnly(part.id);
           refresh();
-        } }, "+ Add part")),
+        } }, top ? "+ Add part" : "+ Add inside")),
     ];
+  }
+
+  /* ---------- Right-click menu on the page ---------- */
+  const menu = h("div", { class: "cms-menu", role: "menu", hidden: true });
+  document.body.append(menu);
+  const closeMenu = () => { menu.hidden = true; menu.replaceChildren(); };
+
+  document.addEventListener("contextmenu", (e) => {
+    if (!editing() || !inPage(e.target)) return;
+    const sec = e.target.closest("main > section");
+    if (!sec) return;
+    e.preventDefault();
+    clearHover();
+    openMenu(e.target, e.clientX, e.clientY);
+  });
+  document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) closeMenu(); });
+  window.addEventListener("scroll", () => { if (!menu.hidden) closeMenu(); });
+
+  // After a change made from the menu: redraw and open the right thing in the panel
+  function afterMenu(sectionId, partId = null) {
+    closeMenu();
+    changed();
+    settingsOpen = !partId;
+    setTimeout(() => showSection(sectionId, partId, { scrollPage: false }), 60);
+  }
+
+  function openMenu(target, x, y) {
+    const secEl = target.closest("main > section");
+    const s = draft.sections.find((v) => v.id === secEl.id);
+    if (!s) return;
+    const si = draft.sections.indexOf(s);
+    const entries = [];
+    const head = (t) => entries.push({ head: t });
+    const item = (label, run, opts = {}) => entries.push({ label, run, ...opts });
+    const sub = (label, choices, pick) => entries.push({ label: label + " ▸", sub: { title: label, choices, pick } });
+    const sep = () => entries.push({ sep: true });
+    const partTypes = Object.entries(Site.parts).map(([k, t]) => [k, t.label]);
+
+    // A project card or a service
+    const card = target.closest(".card");
+    const service = target.closest(".service");
+    if (card) {
+      const i = draft.projects.findIndex((p) => p.id === card.dataset.project);
+      const proj = draft.projects[i];
+      head(`Project · ${proj?.title || ""}`);
+      item("Edit project", () => { closeMenu(); focusItem = { project: proj.id }; showSection(s.id, card.closest(".part")?.dataset.pid, { scrollPage: false }); });
+      item("Duplicate project", () => {
+        const copy = { ...structuredClone(proj), id: "p" + Date.now(), title: `${proj.title} (copy)` };
+        draft.projects.splice(i + 1, 0, copy);
+        focusItem = { project: copy.id };
+        afterMenu(s.id, card.closest(".part")?.dataset.pid);
+      });
+      item("Delete project", () => { if (!confirm(`Delete "${proj.title}"?`)) return; draft.projects.splice(i, 1); afterMenu(s.id, card.closest(".part")?.dataset.pid); }, { danger: true });
+      sep();
+    } else if (service) {
+      const f = findPart(service.closest("[data-pid]")?.dataset.pid);
+      const items = f?.part.items || [];
+      const i = items.findIndex((it) => it.id === service.dataset.iid);
+      head(`Service · ${items[i]?.title || ""}`);
+      item("Edit service", () => { closeMenu(); focusItem = { item: i }; showSection(s.id, f.part.id, { scrollPage: false }); });
+      item("Duplicate service", () => {
+        const copy = { ...structuredClone(items[i]), id: Site.newItemId() };
+        items.splice(i + 1, 0, copy);
+        focusItem = { item: i + 1 };
+        afterMenu(s.id, f.part.id);
+      });
+      item("Add service after", () => { items.splice(i + 1, 0, { id: Site.newItemId(), title: "New service", text: "" }); focusItem = { item: i + 1 }; afterMenu(s.id, f.part.id); });
+      item("Delete service", () => { if (!confirm(`Delete "${items[i].title}"?`)) return; items.splice(i, 1); afterMenu(s.id, f.part.id); }, { danger: true });
+      sep();
+    }
+
+    // A part (the innermost one under the pointer)
+    const partEl = target.closest(".part");
+    const f = partEl ? findPart(partEl.dataset.pid) : null;
+    if (f) {
+      const { part, list, j } = f;
+      const name = Site.parts[part.type]?.label || "Part";
+      head(name);
+      item("Edit", () => { closeMenu(); settingsOpen = false; showSection(s.id, part.id, { scrollPage: false }); });
+      if (part.type === "box") sub("Add inside", partTypes, (type) => { const p = Site.makePart(type); part.parts.push(p); afterMenu(s.id, p.id); });
+      sub("Add after", partTypes, (type) => { const p = Site.makePart(type); list.splice(j + 1, 0, p); afterMenu(s.id, p.id); });
+      item("Wrap in a box", () => {
+        const wrapper = Site.makePart("box");
+        wrapper.parts = [part];
+        list.splice(j, 1, wrapper);
+        afterMenu(s.id, wrapper.id);
+      });
+      item("Duplicate", () => { const copy = freshCopy(part); list.splice(j + 1, 0, copy); afterMenu(s.id, copy.id); });
+      item("Move up", () => { list.splice(j - 1, 0, list.splice(j, 1)[0]); afterMenu(s.id, part.id); }, { disabled: j === 0 });
+      item("Move down", () => { list.splice(j + 1, 0, list.splice(j, 1)[0]); afterMenu(s.id, part.id); }, { disabled: j === list.length - 1 });
+      if (f.chain.length) item("Select the box it's in", () => { closeMenu(); settingsOpen = false; showSection(s.id, f.chain.at(-1), { scrollPage: false }); });
+      item("Edit CSS", () => { closeMenu(); current = { section: s.id, part: part.id }; inspect(partEl.firstElementChild || partEl, "section"); });
+      item(part.parts?.length ? "Delete (and what's inside)" : "Delete", () => {
+        if (!confirm(`Delete this ${name}${part.parts?.length ? " and everything inside it" : ""}?`)) return;
+        list.splice(j, 1);
+        dropStylesFor(part);
+        afterMenu(s.id);
+      }, { danger: true });
+      sep();
+    }
+
+    // The section
+    head(`Section · ${sectionKind(s)}`);
+    item("Section settings", () => { closeMenu(); settingsOpen = true; current.part = null; openSet.clear(); showSection(s.id, null, { scrollPage: false }); });
+    if (s.layout !== "banner") sub("Add to this section", partTypes, (type) => { const p = Site.makePart(type); s.parts.push(p); afterMenu(s.id, p.id); });
+    sub("Add section below", Object.entries(Site.presets).map(([k, t]) => [k, t.label]), (kind) => {
+      const ns = Site.makeSection(kind);
+      draft.sections.splice(si + 1, 0, ns);
+      closeMenu();
+      changed();
+      setTimeout(() => showSection(ns.id), 60);
+    });
+    item("Duplicate section", () => { closeMenu(); duplicateSection(si); });
+    item("Delete section", () => { closeMenu(); removeSection(si); }, { danger: true });
+
+    drawMenu(entries, x, y);
+  }
+
+  function drawMenu(entries, x, y) {
+    const rows = entries.map((e) => {
+      if (e.head) return h("div", { class: "cms-menu-head" }, e.head);
+      if (e.sep) return h("div", { class: "cms-menu-sep", role: "separator" });
+      return h("button", { type: "button", role: "menuitem", class: "cms-menu-item" + (e.danger ? " danger" : ""), disabled: e.disabled,
+        onclick: () => e.sub
+          ? drawMenu([
+            { label: "← Back", run: () => drawMenu(entries, x, y) },
+            { head: e.sub.title },
+            ...e.sub.choices.map(([k, l]) => ({ label: l, run: () => e.sub.pick(k) })),
+          ], x, y)
+          : e.run() }, e.label);
+    });
+    menu.replaceChildren(...rows);
+    menu.hidden = false;
+    // Keep the menu on screen
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + "px";
+    menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
   }
 
   // Stay in the editor across reloads in the same tab
