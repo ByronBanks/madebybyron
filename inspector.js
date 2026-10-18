@@ -212,7 +212,13 @@ const Inspector = (() => {
 
   /* ---------- Panel ---------- */
   function render(el, opts) {
-    const { onSelect, onBack, showAll, onToggleAll, styles, target, onTarget, onSet, onReset } = opts;
+    const { onSelect, onBack, showAll, onToggleAll, styles, target, onTarget, onSet, onReset, openGroup = "Box model", onGroup } = opts;
+    // Collapsible groups, one open at a time (the editor closes the others)
+    const group = (title, ...kids) => {
+      const d = h("details", { class: "insp-group", open: title === openGroup }, h("summary", {}, title), kids);
+      d.addEventListener("toggle", () => onGroup?.(title, d.open));
+      return d;
+    };
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
     const mine = styles[target] || {};
@@ -269,7 +275,7 @@ const Inspector = (() => {
         return row(p, v);
       }).filter(Boolean);
       if (!rows.length) return null;
-      return h("details", { class: "insp-group", open: true }, h("summary", {}, g.title), rows);
+      return group(g.title, rows);
     });
 
     /* Box model with editable numbers */
@@ -353,19 +359,18 @@ const Inspector = (() => {
             h("span", {}, `${p}: ${v}`),
             h("button", { type: "button", class: "insp-reset", title: "Undo", onclick: () => onReset(p, sel) }, "↺")))))) : null,
 
-      h("details", { class: "insp-group", open: true }, h("summary", {}, "Box model"),
+      group("Box model",
         h("p", { class: "insp-hint" }, "Click a number to change it (px)."), boxModel()),
       h("label", { class: "cms-toggle insp-all" },
         h("span", {}, "Show all properties"),
         h("input", { type: "checkbox", role: "switch", checked: showAll, onchange: (e) => onToggleAll(e.target.checked) }),
         h("i", { "aria-hidden": "true" })),
       groups,
-      h("details", { class: "insp-group" }, h("summary", {}, "Add another property"),
+      group("Add another property",
         h("div", { class: "insp-add" }, newProp, newVal,
           h("button", { type: "button", class: "cms-btn small primary", onclick: addProp }, "Add")),
         h("datalist", { id: "insp-props" }, [...new Set(GROUPS.flatMap((g) => g.props).concat(["gap", "margin", "padding", "border", "inset", "outline"]))].map((p) => h("option", { value: p })))),
-      h("details", { class: "insp-group" },
-        h("summary", {}, `CSS rules (${rules.length + (inline ? 1 : 0)})`),
+      group(`CSS rules (${rules.length + (inline ? 1 : 0)})`,
         h("p", { class: "insp-hint" }, "From styles.css. Top rules win when two set the same thing. Your changes override all of these."),
         inline ? h("div", { class: "insp-rule" }, h("div", { class: "insp-sel" }, "style attribute (set by script)"),
           declList(el.style)) : null,

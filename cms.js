@@ -28,7 +28,7 @@
   let saved = null;   // last saved content
   let draft = null;   // content being edited
   let dirty = false;
-  const openSections = new Set(["Page sections"]);
+  let openGroup = "Page sections"; // which overview group is open
 
   /* ---------- Sign-in ---------- */
   const signInBtn = document.getElementById("signInBtn");
@@ -118,6 +118,13 @@
         : "Preview mode: saved in this browser only."),
       importInput));
 
+  // Accordion: opening a collapsible closes the other open ones next to it, to save space
+  sidebar.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (!(d instanceof HTMLDetailsElement) || !d.open) return;
+    for (const sib of d.parentElement?.children || []) if (sib !== d && sib.tagName === "DETAILS" && sib.open) sib.open = false;
+  }, true);
+
   const fab = h("button", { class: "cms-fab", onclick: () => setCollapsed(false) }, "✎ Edit site");
   document.body.append(sidebar, fab);
 
@@ -181,6 +188,7 @@
   function showSection(id, partId = null, { scrollPage = true } = {}) {
     if (!draft.sections.some((s) => s.id === id)) return showOverview();
     const changedSection = current.section !== id;
+    if (changedSection || partId) settingsOpen = !partId; // clicked a part → show the part; clicked the section → its settings
     current = { section: id, part: partId };
     buildSectionView();
     showView("section");
@@ -269,6 +277,7 @@
   let selected = null;
   let showAllProps = false;
   let target = null; // CSS selector that style edits apply to
+  let inspGroup = "Box model"; // which inspector group is expanded
 
   function inspect(el, back = view === "inspector" ? inspectBack : view) {
     selected?.classList.remove("cms-selected");
@@ -301,6 +310,8 @@
       onBack: backFromInspector,
       showAll: showAllProps,
       onToggleAll: (on) => { showAllProps = on; renderInspector(); },
+      openGroup: inspGroup,
+      onGroup: (title, open) => { if (open) inspGroup = title; else if (inspGroup === title) inspGroup = null; },
       styles: draft.styles,
       target,
       onTarget: (sel) => { target = sel; renderInspector(); },
@@ -445,22 +456,35 @@
       h("div", { class: "cms-row" }, uploadBtn, removeBtn), note, fileInput);
   }
 
-  // A list of small items (services, social links): each item is a few fields
+  // A list of small items (services, social links). Each item collapses to its title.
+  const openListItem = {}; // list path → index of the expanded item
   function listEditor(path, fields, addLabel, blank) {
     const wrap = h("div", { class: "cms-list" });
+    const titleOf = (it) => plain(it?.[fields[0][0]]) || "New item";
     function rebuild() {
       const items = getPath(draft, path) || [];
-      wrap.replaceChildren(...items.map((_, i) =>
-        h("div", { class: "cms-subgroup cms-list-item", "data-item": i },
-          fields.map(([key, label, opts]) => field(`${path}.${i}.${key}`, label, opts)),
-          h("button", { type: "button", class: "cms-icon", title: "Remove", "aria-label": "Remove", onclick: () => {
-            getPath(draft, path).splice(i, 1); rebuild(); changed();
-          } }, "✕"))));
+      wrap.replaceChildren(...items.map((it, i) => {
+        const title = h("span", { class: "cms-li-title" }, titleOf(it));
+        const item = h("details", { class: "cms-item cms-list-item", "data-item": i, open: openListItem[path] === i },
+          h("summary", {}, title,
+            h("button", { type: "button", class: "cms-icon danger", title: "Remove", "aria-label": "Remove", onclick: (e) => {
+              e.preventDefault();
+              getPath(draft, path).splice(i, 1);
+              if (openListItem[path] === i) delete openListItem[path];
+              rebuild(); changed();
+            } }, "✕")),
+          h("div", { class: "cms-section-body" }, fields.map(([key, label, opts]) => field(`${path}.${i}.${key}`, label, opts))));
+        item.addEventListener("input", () => (title.textContent = titleOf(getPath(draft, path)[i])));
+        item.addEventListener("toggle", () => { if (item.open) openListItem[path] = i; else if (openListItem[path] === i) delete openListItem[path]; });
+        return item;
+      }));
     }
     rebuild();
     return [wrap, h("button", { type: "button", class: "cms-btn small", onclick: () => {
       if (!getPath(draft, path)) setPath(draft, path, []);
-      getPath(draft, path).push(structuredClone(blank)); rebuild(); changed();
+      getPath(draft, path).push(structuredClone(blank));
+      openListItem[path] = getPath(draft, path).length - 1;
+      rebuild(); changed();
     } }, addLabel)];
   }
 
@@ -599,9 +623,9 @@
 
   /* ---------- Overview: all sections, projects, style changes ---------- */
   function overviewSection(title, ...kids) {
-    const d = h("details", { class: "cms-section", open: openSections.has(title) },
+    const d = h("details", { class: "cms-section", open: openGroup === title },
       h("summary", {}, title), h("div", { class: "cms-section-body" }, kids));
-    d.addEventListener("toggle", () => d.open ? openSections.add(title) : openSections.delete(title));
+    d.addEventListener("toggle", () => { if (d.open) openGroup = title; else if (openGroup === title) openGroup = null; });
     return d;
   }
 
@@ -650,13 +674,12 @@
   const CATEGORIES = [["design", "Design"], ["photo", "Photo & Film"], ["dev", "Development"], ["studio", "Studio"]];
   const SIZES = [["", "Normal"], ["wide", "Wide"], ["tall", "Tall"]];
 
+  let openProject = null; // id of the expanded project
+
   function projectsEditor() {
     const wrap = h("div", { class: "cms-list" });
     // A project clicked on the page opens in the list
-    if (focusItem?.project) {
-      const fp = draft.projects.find((x) => x.id === focusItem.project);
-      if (fp) Object.defineProperty(fp, "_open", { value: true, enumerable: false, writable: true, configurable: true });
-    }
+    if (focusItem?.project) openProject = focusItem.project;
     const move = (i, d) => {
       const p = draft.projects;
       [p[i], p[i + d]] = [p[i + d], p[i]];
@@ -666,7 +689,7 @@
       wrap.replaceChildren(...draft.projects.map((p, i) => {
         const summary = h("summary", {}, h("b", {}, p.title || "Untitled"), h("span", {}, CATEGORIES.find((c) => c[0] === p.category)?.[1]));
         const refreshSummary = () => { summary.firstChild.textContent = draft.projects[i].title || "Untitled"; summary.lastChild.textContent = CATEGORIES.find((c) => c[0] === draft.projects[i].category)?.[1]; };
-        const item = h("details", { class: "cms-item", open: p._open, "data-project": p.id },
+        const item = h("details", { class: "cms-item", open: p.id === openProject, "data-project": p.id },
           summary,
           h("div", { class: "cms-section-body" },
             imageField(`projects.${i}.image`, "Image"),
@@ -684,14 +707,14 @@
                 if (!confirm(`Delete "${p.title || "Untitled"}"?`)) return;
                 draft.projects.splice(i, 1); rebuild(); changed();
               } }, "Delete"))));
-        item.addEventListener("toggle", () => { Object.defineProperty(p, "_open", { value: item.open, enumerable: false, writable: true, configurable: true }); });
+        item.addEventListener("toggle", () => { if (item.open) openProject = p.id; else if (openProject === p.id) openProject = null; });
         return item;
       }));
     }
     rebuild();
     const add = h("button", { type: "button", class: "cms-btn primary block", onclick: () => {
       const p = { id: "p" + Date.now(), title: "New project", category: "design", year: new Date().getFullYear(), summary: "", description: "", size: "", image: "" };
-      Object.defineProperty(p, "_open", { value: true, enumerable: false, writable: true, configurable: true });
+      openProject = p.id;
       draft.projects.unshift(p);
       rebuild(); changed();
     } }, "+ Add project");
@@ -730,7 +753,8 @@
   }
 
   /* ---------- Section view: one section and its parts ---------- */
-  const openParts = new Set(); // part ids that are expanded
+  let openPart = null;        // id of the expanded part
+  let settingsOpen = true;    // is "Section settings" expanded
 
   // Left / Centre / Right buttons for a section
   function alignControl(s) {
@@ -756,6 +780,11 @@
     if (!target) return;
     sectionView.querySelectorAll(".cms-focus").forEach((x) => x.classList.remove("cms-focus"));
     target.classList.add("cms-focus");
+    if (target.tagName === "DETAILS") {
+      // Close the previously open item first, so it can't close this one
+      for (const sib of target.parentElement.children) if (sib !== target && sib.tagName === "DETAILS") sib.open = false;
+      target.open = true;
+    }
     target.scrollIntoView({ block: "center" });
     target.querySelector('input:not([type="file"]):not([type="color"]), textarea')?.focus({ preventScroll: true });
   }
@@ -763,7 +792,8 @@
   function buildSectionView() {
     const si = draft.sections.findIndex((s) => s.id === current.section);
     const s = draft.sections[si];
-    if (current.part) openParts.add(current.part);
+    if (current.part) openPart = current.part;
+    if (openPart && settingsOpen && current.part) settingsOpen = false;
     const scroll = sectionView.scrollTop;
     const p = `sections.${si}.`;
     const isBanner = s.layout === "banner";
@@ -777,7 +807,7 @@
       h("span", { class: "cms-sec-num" }, String(si + 1)),
       h("div", {}, h("b", {}, sectionKind(s)), h("span", {}, sectionTitle(s))));
 
-    const settings = isBanner
+    const settingsFields = isBanner
       ? [field(p + "items", "Banner words", { type: "textarea", rows: 2, hint: "Comma-separated." })]
       : [
         alignControl(s),
@@ -797,6 +827,13 @@
               field(p + "ratio", "Image size", { type: "select", options: [["third", "1/3"], ["two-fifths", "2/5"], ["half", "1/2"], ["three-fifths", "3/5"], ["two-thirds", "2/3"]] }),
               field(p + "valign", "Line up", { type: "select", options: [["top", "Top"], ["middle", "Middle"], ["bottom", "Bottom"]] })))) : null,
       ];
+    const settings = h("details", { class: "cms-more-opts cms-settings", open: settingsOpen || isBanner },
+      h("summary", {}, isBanner ? "Banner" : "Section settings"),
+      h("div", { class: "cms-section-body" }, settingsFields));
+    settings.addEventListener("toggle", () => {
+      settingsOpen = settings.open;
+      if (settings.open) collapseParts();
+    });
 
     sectionView.replaceChildren(
       header,
@@ -804,7 +841,7 @@
       h("div", { class: "cms-section-body cms-sv-body" },
         settings,
         isBanner ? null : partsList(s, si),
-        h("details", { class: "cms-more-opts" }, h("summary", {}, "Menu & link"),
+        h("details", { class: "cms-more-opts cms-menu-opts", ontoggle: (e) => { if (e.target.open) { collapseParts(); closeSettings(); } } }, h("summary", {}, "Menu & link"),
           h("div", { class: "cms-section-body" },
             field(p + "menu", "Top menu label", { hint: "Leave empty to keep this section out of the menu." }),
             h("small", { class: "cms-note" }, "Link to this section with ", h("code", {}, "#" + s.id)))),
@@ -812,6 +849,21 @@
           h("button", { type: "button", class: "cms-btn small", onclick: () => duplicateSection(si) }, "Duplicate section"),
           h("button", { type: "button", class: "cms-btn small danger", onclick: () => removeSection(si) }, "Delete section"))));
     sectionView.scrollTop = scroll;
+  }
+
+  // Settings, parts and "Menu & link" behave as one accordion
+  function collapseParts(except = null) {
+    sectionView.querySelectorAll(".cms-part.open").forEach((c) => {
+      if (c.dataset.card === except) return;
+      c.classList.remove("open");
+      c.querySelector(".cms-part-body").hidden = true;
+      c.querySelector(".cms-part-title").setAttribute("aria-expanded", "false");
+    });
+    if (openPart !== except) openPart = except;
+  }
+  function closeSettings() {
+    sectionView.querySelectorAll(".cms-settings[open], .cms-menu-opts[open]").forEach((d) => (d.open = false));
+    settingsOpen = false;
   }
 
   function duplicateSection(i) {
@@ -855,7 +907,7 @@
 
     s.parts.forEach((part, j) => {
       const path = `sections.${si}.parts.${j}.`;
-      const isOpen = openParts.has(part.id);
+      const isOpen = openPart === part.id;
       const label = h("span", { class: "cms-part-preview" }, partPreview(part));
       const handle = h("span", { class: "cms-handle", title: "Drag to move", "aria-hidden": "true" }, "⠿");
       const others = draft.sections.filter((x) => x.id !== s.id && x.layout !== "banner");
@@ -869,11 +921,13 @@
       const card = h("div", { class: "cms-part" + (isOpen ? " open" : "") + (current.part === part.id ? " current" : ""), "data-card": part.id },
         h("div", { class: "cms-part-head" },
           handle,
-          h("button", { type: "button", class: "cms-part-title", "aria-expanded": String(isOpen), onclick: () => {
+          h("button", { type: "button", class: "cms-part-title", "aria-expanded": String(isOpen), onclick: (e) => {
             const open = body.hidden;
+            if (open) { collapseParts(part.id); closeSettings(); }
             body.hidden = !open;
             card.classList.toggle("open", open);
-            open ? openParts.add(part.id) : openParts.delete(part.id);
+            e.currentTarget.setAttribute("aria-expanded", String(open));
+            openPart = open ? part.id : null;
             current.part = open ? part.id : current.part === part.id ? null : current.part;
             markCurrent();
             if (open) document.querySelector(`[data-pid="${part.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -943,7 +997,8 @@
         h("button", { type: "button", class: "cms-btn small primary", onclick: () => {
           const part = Site.makePart(typeSelect.value);
           s.parts.push(part);
-          openParts.add(part.id);
+          openPart = part.id;
+          settingsOpen = false;
           current.part = part.id;
           refresh();
         } }, "+ Add part")),
