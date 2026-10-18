@@ -37,6 +37,27 @@ function setArt(el, p, i) {
   else { el.removeAttribute("style"); el.style.background = placeholderArt(p, i); }
 }
 
+// Style changes made in the editor's inspector: { "selector": { "property": "value" } }
+const SAFE = (s) => typeof s === "string" && !/[{}<;]/.test(s);
+function stylesToCSS(styles = {}) {
+  return Object.entries(styles).map(([sel, props]) => {
+    if (!SAFE(sel)) return "";
+    const decls = Object.entries(props || {})
+      .filter(([p, v]) => /^-{0,2}[a-z][a-z-]*$/.test(p) && SAFE(v) && v.trim())
+      .map(([p, v]) => `  ${p}: ${v} !important;`);
+    return decls.length ? `${sel} {\n${decls.join("\n")}\n}` : "";
+  }).filter(Boolean).join("\n");
+}
+function applyStyles(styles) {
+  let tag = document.getElementById("site-style-changes");
+  if (!tag) {
+    tag = document.createElement("style");
+    tag.id = "site-style-changes";
+    document.head.append(tag);
+  }
+  tag.textContent = stylesToCSS(styles);
+}
+
 let content = null;
 let filter = "all";
 let words = [];
@@ -67,6 +88,7 @@ function renderGrid() {
 function render(c) {
   content = c;
   const { hero, about, contact, services } = c;
+  applyStyles(c.styles);
 
   $("heroEyebrow").textContent = hero.eyebrow;
   $("heroHeadline").innerHTML = rich(hero.headline);
@@ -150,5 +172,6 @@ $("year").textContent = new Date().getFullYear();
 
 const Site = {
   render,
+  applyStyles,
   ready: Store.loadContent().then((c) => { render(c); return c; }),
 };

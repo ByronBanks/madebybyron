@@ -124,10 +124,13 @@
   }, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) closeInspector(); });
 
+  let target = null; // CSS selector that style edits apply to
+
   function inspect(el) {
     selected?.classList.remove("cms-selected");
     selected = el;
     el.classList.add("cms-selected");
+    target = Inspector.targets(el)[0]?.sel || null;
     renderInspector();
     body.hidden = true;
     inspectorView.hidden = false;
@@ -137,12 +140,36 @@
 
   function renderInspector() {
     if (!selected?.isConnected) return closeInspector();
+    const top = inspectorView.scrollTop;
+    draft.styles ??= {};
     inspectorView.replaceChildren(Inspector.render(selected, {
       onSelect: inspect,
       onBack: closeInspector,
       showAll: showAllProps,
-      onToggleAll: (on) => { showAllProps = on; const top = inspectorView.scrollTop; renderInspector(); inspectorView.scrollTop = top; },
+      onToggleAll: (on) => { showAllProps = on; renderInspector(); },
+      styles: draft.styles,
+      target,
+      onTarget: (sel) => { target = sel; renderInspector(); },
+      onSet: (prop, value, { live } = {}) => {
+        if (!target) return;
+        (draft.styles[target] ??= {})[prop] = value;
+        stylesChanged(!live);
+      },
+      onReset: (prop, sel = target) => {
+        if (!draft.styles[sel]) return;
+        delete draft.styles[sel][prop];
+        if (!Object.keys(draft.styles[sel]).length) delete draft.styles[sel];
+        stylesChanged(true);
+      },
     }));
+    inspectorView.scrollTop = top;
+  }
+
+  // Style edits only restyle the page; they don't rebuild it, so the selection survives
+  function stylesChanged(rerender) {
+    setDirty(true);
+    Site.applyStyles(draft.styles);
+    if (rerender) renderInspector();
   }
 
   function closeInspector() {
@@ -151,6 +178,7 @@
     inspectorView.hidden = true;
     inspectorView.replaceChildren();
     body.hidden = false;
+    if (draft) buildForm(); // refresh the Style changes list
   }
 
   const sidebar = h("aside", { class: "cms", "aria-label": "Site editor" },
@@ -242,6 +270,7 @@
     Site.render(draft);
     buildForm();
     setDirty(false);
+    if (selected) renderInspector();
   }
   async function signOut() {
     if (dirty && !confirm("Sign out and lose unsaved changes?")) return;
@@ -393,6 +422,37 @@
     } }, "+ Add link")];
   }
 
+  // Every style edit made in the inspector, with undo
+  function styleChangesList() {
+    const entries = Object.entries(draft.styles || {}).filter(([, p]) => Object.keys(p).length);
+    if (!entries.length) {
+      return h("p", { class: "cms-note" }, "None yet. Turn on Show outlines, click any part of the page, and change its values.");
+    }
+    const undo = (sel, prop) => {
+      if (prop) delete draft.styles[sel][prop];
+      if (!prop || !Object.keys(draft.styles[sel]).length) delete draft.styles[sel];
+      setDirty(true);
+      Site.applyStyles(draft.styles);
+      buildForm();
+    };
+    return [
+      entries.map(([sel, props]) => h("div", { class: "insp-change" },
+        h("div", { class: "cms-row" },
+          h("code", {}, sel),
+          h("button", { type: "button", class: "cms-link", onclick: () => undo(sel) }, "Undo all")),
+        Object.entries(props).map(([p, v]) => h("div", { class: "insp-change-row" },
+          h("span", {}, `${p}: ${v}`),
+          h("button", { type: "button", class: "insp-reset", title: "Undo", onclick: () => undo(sel, p) }, "↺"))))),
+      h("button", { type: "button", class: "cms-btn small danger", onclick: () => {
+        if (!confirm("Undo every style change?")) return;
+        draft.styles = {};
+        setDirty(true);
+        Site.applyStyles(draft.styles);
+        buildForm();
+      } }, "Undo all style changes"),
+    ];
+  }
+
   function buildForm() {
     const scroll = body.scrollTop;
     body.replaceChildren(
@@ -422,7 +482,8 @@
         field("contact.heading", "Big link text", { type: "textarea", hint: RICH_HINT }),
         field("contact.email", "Email address", { type: "email" }),
         h("span", { class: "cms-label" }, "Social links"),
-        socialsEditor()));
+        socialsEditor()),
+      section("Style changes", styleChangesList()));
     body.scrollTop = scroll;
   }
 
