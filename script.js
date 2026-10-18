@@ -52,23 +52,59 @@ function stylesToCSS(styles = {}) {
     return decls.length ? `${sel} {\n${decls.join("\n")}\n}` : "";
   }).filter(Boolean).join("\n");
 }
-// Simple style settings stored on sections and parts (colour, size, padding, background)
+// Simple style settings stored on sections, parts and list items as `css: {...}`
+//   spacing: padT padR padB padL, marT marR marB marL (px)
+//   text:    font, size, color   (services also titleSize / textSize)
+//   box:     bg, opacity (0–100), borderW, borderColor, radius
+const FONTS = {
+  sans: '"Inter Tight", system-ui, sans-serif',
+  serif: '"Instrument Serif", Georgia, serif',
+  system: "system-ui, -apple-system, sans-serif",
+  georgia: "Georgia, serif",
+  mono: "ui-monospace, Menlo, monospace",
+};
 const px = (v) => (/^-?\d*\.?\d+$/.test(String(v).trim()) ? `${String(v).trim()}px` : String(v).trim());
+const has = (v) => v !== undefined && v !== null && v !== "";
+function boxDecls(k) {
+  const len = (v) => (has(v) ? px(v) : undefined);
+  return [
+    ["padding-top", len(k.padT)], ["padding-right", len(k.padR)], ["padding-bottom", len(k.padB)], ["padding-left", len(k.padL)],
+    ["margin-top", len(k.marT)], ["margin-right", len(k.marR)], ["margin-bottom", len(k.marB)], ["margin-left", len(k.marL)],
+    ["background", k.bg],
+    ["opacity", has(k.opacity) ? String(Math.max(0, Math.min(100, +k.opacity)) / 100) : undefined],
+    ["border-width", len(k.borderW)], ["border-style", has(k.borderW) ? "solid" : undefined], ["border-color", k.borderColor],
+    ["border-radius", len(k.radius)],
+  ];
+}
+const textDecls = (k) => [["color", k.color], ["font-family", FONTS[k.font]], ["font-size", has(k.size) ? px(k.size) : undefined]];
+
 function quickCSS(c) {
   const out = [];
   const rule = (sel, decls) => {
-    const d = decls.filter(([, v]) => v !== undefined && v !== "" && SAFE(String(v))).map(([p, v]) => `  ${p}: ${v} !important;`);
+    const d = decls.filter(([, v]) => has(v) && SAFE(String(v))).map(([p, v]) => `  ${p}: ${v} !important;`);
     if (d.length) out.push(`${sel} {\n${d.join("\n")}\n}`);
   };
   for (const s of c.sections || []) {
     const q = s.css || {};
-    rule(`#${s.id}`, [["background", q.background], ["padding-top", q.padY && px(q.padY)], ["padding-bottom", q.padY && px(q.padY)]]);
+    rule(`#${s.id}`, [...boxDecls(q), ["color", q.color], ["font-family", FONTS[q.font]]]);
+    // Section text colour reaches its parts (a part's own colour, written later, still wins)
+    rule(`:where(#${s.id}) .part > *`, [["color", q.color]]);
     for (const p of s.parts || []) {
       const k = p.css || {};
       const sel = `[data-pid="${p.id}"]`;
-      rule(sel, [["padding", k.padding && px(k.padding)]]);
-      rule(`${sel} > *`, [["color", k.color], ["font-size", k.size && px(k.size)]]);
-      if (k.size) rule(`${sel} .quote-text, ${sel} .big-link`, [["font-size", px(k.size)]]);
+      rule(sel, boxDecls(k));
+      rule(`${sel} > *`, textDecls(k));
+      if (has(k.size)) rule(`${sel} :is(.quote-text, .big-link)`, [["font-size", px(k.size)]]);
+      // Items inside a part: services, links
+      for (const it of Array.isArray(p.items) ? p.items : []) {
+        const t = it?.css;
+        if (!t) continue;
+        const isel = `[data-iid="${it.id}"]`;
+        rule(isel, [...boxDecls(t), ...textDecls(t)]);
+        rule(`${isel} :is(h3, p)`, [["color", t.color]]);
+        if (has(t.titleSize)) rule(`${isel} h3`, [["font-size", px(t.titleSize)]]);
+        if (has(t.textSize)) rule(`${isel} p`, [["font-size", px(t.textSize)]]);
+      }
     }
   }
   return out.join("\n");
@@ -132,7 +168,7 @@ const PART_TYPES = {
   links: {
     label: "Links", defaults: { items: [{ label: "Instagram", url: "#" }] },
     html: (p) => `<div class="socials">${(p.items || []).filter((x) => x.label)
-      .map((x) => `<a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join("")}</div>`,
+      .map((x) => `<a href="${esc(safeUrl(x.url))}" data-iid="${esc(x.id)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join("")}</div>`,
   },
   biglink: {
     label: "Big link", defaults: { text: "Let's make\nsomething *good* →", link: "mailto:hello@example.com" },
@@ -149,7 +185,7 @@ const PART_TYPES = {
   services: {
     label: "Services list", defaults: { items: [{ title: "Service one", text: "What it is and who it's for." }] },
     html: (p) => `<div class="services">${(p.items || []).map((it, i) => `
-      <article class="service" style="--c: var(--c-${SERVICE_COLORS[i % 4]})">
+      <article class="service" data-iid="${esc(it.id)}" style="--c: var(--c-${SERVICE_COLORS[i % 4]})">
         <span class="num">${String(i + 1).padStart(2, "0")}</span>
         <h3>${esc(it.title)}</h3>
         <p>${esc(it.text)}</p>
@@ -162,6 +198,7 @@ const PART_TYPES = {
 };
 
 const newPartId = () => "p" + Math.random().toString(36).slice(2, 8);
+const newItemId = () => "i" + Math.random().toString(36).slice(2, 8);
 const part = (type, fields = {}) => ({ id: newPartId(), type, ...structuredClone(PART_TYPES[type].defaults), ...fields });
 
 /* ---------- Section presets (what "Add a section" offers) ---------- */
@@ -202,7 +239,21 @@ function upgradeContent(c) {
   // v2: each section type had fixed fields → v3: every section is a list of parts
   c.sections = c.sections.map((s) => (Array.isArray(s.parts) ? s : partsFromV2(s)));
   // Every part needs a stable id so its styles follow it when it moves
-  for (const s of c.sections) for (const p of s.parts) p.id ??= newPartId();
+  for (const s of c.sections) {
+    // Older simple settings → the fuller style model
+    const q = s.css;
+    if (q?.background !== undefined) { q.bg ??= q.background; delete q.background; }
+    if (q?.padY !== undefined) { q.padT ??= q.padY; q.padB ??= q.padY; delete q.padY; }
+    for (const p of s.parts) {
+      p.id ??= newPartId();
+      if (p.css?.padding !== undefined) {
+        for (const side of ["padT", "padR", "padB", "padL"]) p.css[side] ??= p.css.padding;
+        delete p.css.padding;
+      }
+      // Items in a list (services, links) get ids so their styles follow them when reordered
+      if (Array.isArray(p.items)) for (const it of p.items) if (it && typeof it === "object") it.id ??= newItemId();
+    }
+  }
   return c;
 }
 
@@ -398,6 +449,8 @@ const Site = {
   makeSection,
   makePart: part,
   newPartId,
+  newItemId,
+  fonts: FONTS,
   newSectionId,
   ready: Store.loadContent().then((c) => { render(c); return c; }),
 };

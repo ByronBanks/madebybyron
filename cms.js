@@ -456,45 +456,104 @@
       h("div", { class: "cms-row" }, uploadBtn, removeBtn), note, fileInput);
   }
 
-  // A list of small items (services, social links). Each item collapses to its title.
+  // A list of small items (services, social links). Each item collapses to its title,
+  // can be dragged (⠿) or moved with ↑↓, and can have its own style.
   const openListItem = {}; // list path → index of the expanded item
-  function listEditor(path, fields, addLabel, blank) {
+  function listEditor(path, fields, addLabel, blank, styleFor = null) {
     const wrap = h("div", { class: "cms-list" });
     const titleOf = (it) => plain(it?.[fields[0][0]]) || "New item";
+    let dragFrom = null;
+
+    function move(from, to) {
+      const items = getPath(draft, path);
+      if (to < 0 || to >= items.length) return;
+      const [it] = items.splice(from, 1);
+      items.splice(to, 0, it);
+      if (openListItem[path] === from) openListItem[path] = to;
+      rebuild(); changed();
+    }
+
     function rebuild() {
       const items = getPath(draft, path) || [];
       wrap.replaceChildren(...items.map((it, i) => {
         const title = h("span", { class: "cms-li-title" }, titleOf(it));
+        const handle = h("span", { class: "cms-handle", title: "Drag to move", "aria-hidden": "true" }, "⠿");
+        const stop = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
         const item = h("details", { class: "cms-item cms-list-item", "data-item": i, open: openListItem[path] === i },
-          h("summary", {}, title,
-            h("button", { type: "button", class: "cms-icon danger", title: "Remove", "aria-label": "Remove", onclick: (e) => {
-              e.preventDefault();
+          h("summary", {}, handle, title,
+            h("button", { type: "button", class: "cms-icon", title: "Move up", "aria-label": "Move up", disabled: i === 0, onclick: stop(() => move(i, i - 1)) }, "↑"),
+            h("button", { type: "button", class: "cms-icon", title: "Move down", "aria-label": "Move down", disabled: i === items.length - 1, onclick: stop(() => move(i, i + 1)) }, "↓"),
+            h("button", { type: "button", class: "cms-icon danger", title: "Remove", "aria-label": "Remove", onclick: stop(() => {
               getPath(draft, path).splice(i, 1);
               if (openListItem[path] === i) delete openListItem[path];
               rebuild(); changed();
-            } }, "✕")),
-          h("div", { class: "cms-section-body" }, fields.map(([key, label, opts]) => field(`${path}.${i}.${key}`, label, opts))));
+            }) }, "✕")),
+          h("div", { class: "cms-section-body" },
+            fields.map(([key, label, opts]) => field(`${path}.${i}.${key}`, label, opts)),
+            styleFor ? styleEditor(`${path}.${i}.css`, styleFor(it)) : null));
         item.addEventListener("input", () => (title.textContent = titleOf(getPath(draft, path)[i])));
         item.addEventListener("toggle", () => { if (item.open) openListItem[path] = i; else if (openListItem[path] === i) delete openListItem[path]; });
+
+        // Drag by the handle to reorder
+        handle.addEventListener("pointerdown", () => (item.draggable = true));
+        item.addEventListener("dragstart", (e) => { e.stopPropagation(); dragFrom = i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "item"); item.classList.add("dragging"); });
+        item.addEventListener("dragend", () => {
+          item.draggable = false; dragFrom = null; item.classList.remove("dragging");
+          wrap.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+        });
         return item;
       }));
     }
+    const dropIndex = (e) => {
+      const rows = [...wrap.children];
+      for (const [k, r] of rows.entries()) {
+        const b = r.getBoundingClientRect();
+        if (e.clientY < b.top + b.height / 2) return { index: k, row: r, where: "before" };
+      }
+      return { index: rows.length, row: rows.at(-1), where: "after" };
+    };
+    wrap.addEventListener("dragover", (e) => {
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
+      wrap.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+      const t = dropIndex(e);
+      t.row?.classList.add(t.where === "before" ? "drop-before" : "drop-after");
+    });
+    wrap.addEventListener("drop", (e) => {
+      if (dragFrom == null) return;
+      e.preventDefault(); e.stopPropagation();
+      const to = dropIndex(e).index;
+      move(dragFrom, to > dragFrom ? to - 1 : to);
+    });
+
     rebuild();
     return [wrap, h("button", { type: "button", class: "cms-btn small", onclick: () => {
       if (!getPath(draft, path)) setPath(draft, path, []);
-      getPath(draft, path).push(structuredClone(blank));
+      getPath(draft, path).push({ id: Site.newItemId(), ...structuredClone(blank) });
       openListItem[path] = getPath(draft, path).length - 1;
       rebuild(); changed();
     } }, addLabel)];
   }
 
-  /* ---------- Simple style controls (colour, size, padding, background) ---------- */
+  /* ---------- Style controls: spacing, text, fill and border ---------- */
   const toHex = (c) => {
     const m = String(c).match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
     return m ? "#" + [m[1], m[2], m[3]].map((n) => Math.round(+n).toString(16).padStart(2, "0")).join("") : "#000000";
   };
+  const pageEl = (sel) => { try { return document.querySelector(sel); } catch (e) { return null; } };
+  const cssOf = (sel, prop) => { const el = pageEl(sel); return el ? getComputedStyle(el)[prop] : ""; };
+  const round = (v) => String(Math.round(parseFloat(v) || 0));
+  const clear = (c) => /^rgba\(.*,\s*0\)$|^transparent$/.test(c);
+  // The colour you actually see behind an element (see-through boxes show what's behind them)
+  function bgSample(sel) {
+    for (let el = pageEl(sel); el; el = el.parentElement) {
+      const c = getComputedStyle(el).backgroundColor;
+      if (!clear(c)) return c;
+    }
+    return getComputedStyle(document.body).backgroundColor;
+  }
 
-  // Each setting lives at e.g. sections.2.parts.1.css.color; empty = use the design's default
+  // Each setting lives at e.g. sections.2.parts.1.css.padT; empty = use the design's default
   function setQuick(path, value) {
     if (value === "" || value == null) {
       const keys = path.split(".");
@@ -505,53 +564,121 @@
     setDirty(true);
     Site.applyStyles(draft);
   }
+  const isSet = (path) => { const v = getPath(draft, path); return v !== undefined && v !== null && v !== ""; };
+
+  function control(label, path, input, reset) {
+    const wrap = h("label", { class: "cms-quick" + (isSet(path) ? " set" : "") }, h("span", {}, label), h("span", { class: "cms-quick-row" }, input, reset));
+    return wrap;
+  }
+  function resetBtn(path, onReset) {
+    const b = h("button", { type: "button", class: "insp-reset", title: "Back to default", hidden: !isSet(path), onclick: (e) => {
+      e.preventDefault(); setQuick(path, ""); b.hidden = true; b.closest(".cms-quick")?.classList.remove("set"); onReset();
+    } }, "↺");
+    return b;
+  }
+  const markSet = (el, on) => { el.closest(".cms-quick")?.classList.toggle("set", on); el.closest(".cms-quick")?.querySelector(".insp-reset")?.toggleAttribute("hidden", !on); };
 
   function colorControl(path, label, sample) {
+    const picker = h("input", { type: "color", class: "insp-color", value: getPath(draft, path) || toHex(sample()),
+      oninput: () => { setQuick(path, picker.value); markSet(picker, true); } });
+    return control(label, path, picker, resetBtn(path, () => (picker.value = toHex(sample()))));
+  }
+  function numberControl(path, label, sample, { unit = "px", min = 0 } = {}) {
+    const input = h("input", { type: "number", min, step: 1, value: getPath(draft, path) ?? "", placeholder: sample(),
+      oninput: () => { setQuick(path, input.value); markSet(input, input.value !== ""); } });
+    return control(label, path, [input, h("small", {}, unit)], resetBtn(path, () => (input.value = "")));
+  }
+  function fontControl(path) {
+    const names = { sans: "Inter Tight", serif: "Instrument Serif", system: "System", georgia: "Georgia", mono: "Monospace" };
+    const sel = h("select", { onchange: () => { setQuick(path, sel.value); markSet(sel, sel.value !== ""); } },
+      h("option", { value: "" }, "Default"),
+      Object.keys(Site.fonts).map((k) => h("option", { value: k, selected: getPath(draft, path) === k }, names[k] || k)));
+    return control("Font", path, sel, resetBtn(path, () => (sel.value = "")));
+  }
+  function opacityControl(path, sample) {
     const now = getPath(draft, path);
-    const picker = h("input", { type: "color", class: "insp-color", value: now || toHex(sample()),
-      oninput: () => { setQuick(path, picker.value); reset.hidden = false; wrap.classList.add("set"); } });
-    const reset = h("button", { type: "button", class: "insp-reset", title: "Back to default", hidden: !now, onclick: () => {
-      setQuick(path, ""); reset.hidden = true; wrap.classList.remove("set"); picker.value = toHex(sample());
-    } }, "↺");
-    const wrap = h("label", { class: "cms-quick" + (now ? " set" : "") }, h("span", {}, label), h("span", { class: "cms-quick-row" }, picker, reset));
-    return wrap;
+    const shown = h("small", {}, `${now ?? sample()}%`);
+    const range = h("input", { type: "range", min: 0, max: 100, step: 1, value: now ?? sample(),
+      oninput: () => { setQuick(path, range.value); shown.textContent = `${range.value}%`; markSet(range, true); } });
+    return control("Opacity", path, [range, shown], resetBtn(path, () => { range.value = sample(); shown.textContent = `${sample()}%`; }));
   }
 
-  function numberControl(path, label, sample, unit = "px") {
-    const now = getPath(draft, path);
-    const input = h("input", { type: "number", min: 0, step: 1, value: now ?? "", placeholder: sample(),
-      oninput: () => { setQuick(path, input.value); reset.hidden = input.value === ""; wrap.classList.toggle("set", input.value !== ""); } });
-    const reset = h("button", { type: "button", class: "insp-reset", title: "Back to default", hidden: now == null || now === "", onclick: () => {
-      input.value = ""; setQuick(path, ""); reset.hidden = true; wrap.classList.remove("set");
-    } }, "↺");
-    const wrap = h("label", { class: "cms-quick" + (now != null && now !== "" ? " set" : "") },
-      h("span", {}, label), h("span", { class: "cms-quick-row" }, input, h("small", {}, unit), reset));
-    return wrap;
+  // Margin (outside) and padding (inside) for all four sides, drawn as a box
+  function spacingControl(base, boxSel) {
+    const cs = () => { const el = pageEl(boxSel); return el ? getComputedStyle(el) : null; };
+    const side = (key, prop, min) => {
+      const path = `${base}.${key}`;
+      const input = h("input", { class: "sp-input" + (isSet(path) ? " set" : ""), type: "number", min, step: 1, title: prop,
+        value: getPath(draft, path) ?? "", placeholder: round(cs()?.[prop]),
+        oninput: () => { setQuick(path, input.value); input.classList.toggle("set", input.value !== ""); } });
+      return input;
+    };
+    const all = (prefix, label, min) => {
+      const input = h("input", { type: "number", min, step: 1, placeholder: "all",
+        oninput: () => {
+          for (const s of ["T", "R", "B", "L"]) setQuick(`${base}.${prefix}${s}`, input.value);
+          box.querySelectorAll(`[data-group="${prefix}"] .sp-input`).forEach((x) => { x.value = input.value; x.classList.toggle("set", input.value !== ""); });
+        } });
+      return h("label", { class: "sp-all" }, h("span", {}, label), input, h("small", {}, "px"));
+    };
+    const ring = (prefix, name, props, inner, min) => h("div", { class: `sp-ring sp-${name}`, "data-group": prefix },
+      h("span", { class: "sp-name" }, name),
+      h("span", { class: "sp-t" }, side(prefix + "T", props[0], min)),
+      h("span", { class: "sp-l" }, side(prefix + "L", props[3], min)),
+      inner,
+      h("span", { class: "sp-r" }, side(prefix + "R", props[1], min)),
+      h("span", { class: "sp-b" }, side(prefix + "B", props[2], min)));
+    const box = ring("mar", "margin", ["marginTop", "marginRight", "marginBottom", "marginLeft"],
+      ring("pad", "padding", ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"], h("div", { class: "sp-content" }), 0), undefined);
+    return h("div", { class: "cms-spacing" },
+      h("div", { class: "sp-alls" }, all("pad", "Padding", 0), all("mar", "Margin")),
+      box,
+      h("small", { class: "cms-note" }, "Empty boxes use the design's spacing (shown faintly)."));
   }
 
-  const pageEl = (sel) => document.querySelector(sel);
-  const cssOf = (sel, prop) => { const el = pageEl(sel); return el ? getComputedStyle(el)[prop] : ""; };
-  const round = (v) => String(Math.round(parseFloat(v) || 0));
+  let styleOpen = true; // keep the Style group open or closed as you move between items
+  function styleEditor(base, o) {
+    const sampleText = o.textSel || o.box;
+    const d = h("details", { class: "cms-more-opts cms-style", open: styleOpen },
+      h("summary", {}, "Style"),
+      h("div", { class: "cms-section-body" },
+        h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Spacing"), spacingControl(base, o.box)),
+        o.text ? h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Text"),
+          h("div", { class: "cms-quick-grid" },
+            fontControl(`${base}.font`),
+            o.size ? numberControl(`${base}.size`, "Size", () => round(cssOf(o.sizeSel || sampleText, "fontSize"))) : null,
+            (o.sizes || []).map(([key, label, sel]) => numberControl(`${base}.${key}`, label, () => round(cssOf(`${o.box} ${sel}`, "fontSize")))),
+            colorControl(`${base}.color`, "Colour", () => cssOf(sampleText, "color")))) : null,
+        h("div", { class: "cms-style-sub" }, h("span", { class: "cms-label" }, "Fill & border"),
+          h("div", { class: "cms-quick-grid" },
+            colorControl(`${base}.bg`, "Background", () => bgSample(o.box)),
+            opacityControl(`${base}.opacity`, () => String(Math.round((parseFloat(cssOf(o.box, "opacity")) || 1) * 100))),
+            numberControl(`${base}.borderW`, "Border width", () => round(cssOf(o.box, "borderTopWidth"))),
+            colorControl(`${base}.borderColor`, "Border colour", () => cssOf(o.box, "borderTopColor")),
+            numberControl(`${base}.radius`, "Corner radius", () => round(cssOf(o.box, "borderTopLeftRadius"))))),
+        h("button", { type: "button", class: "cms-link cms-reset-style", onclick: () => {
+          setQuick(base, "");
+          const wrapper = d.parentElement;
+          const fresh = styleEditor(base, o);
+          fresh.open = true;
+          wrapper.replaceChild(fresh, d);
+        } }, "Reset style")));
+    d.addEventListener("toggle", () => (styleOpen = d.open));
+    return d;
+  }
 
   const NO_TEXT = new Set(["image", "spacer", "projects", "services"]);
-  function partQuickStyle(si, j, p) {
-    const base = `sections.${si}.parts.${j}.css.`;
-    const main = `[data-pid="${p.id}"] > *`;
-    return h("div", { class: "cms-quick-grid" },
-      NO_TEXT.has(p.type) ? null : colorControl(base + "color", "Colour", () => cssOf(main, "color")),
-      NO_TEXT.has(p.type) ? null : numberControl(base + "size", "Size", () => round(cssOf(p.type === "quote" ? `[data-pid="${p.id}"] .quote-text` : main, "fontSize"))),
-      numberControl(base + "padding", "Padding", () => round(cssOf(`[data-pid="${p.id}"]`, "paddingTop"))));
-  }
-  function sectionQuickStyle(si, s) {
-    const base = `sections.${si}.css.`;
-    return h("div", { class: "cms-quick-grid" },
-      colorControl(base + "background", "Background", () => {
-        // A see-through section shows the page colour behind it
-        const c = cssOf(`#${s.id}`, "backgroundColor");
-        return /^rgba\(.*,\s*0\)$|^transparent$/.test(c) ? getComputedStyle(document.body).backgroundColor : c;
-      }),
-      numberControl(base + "padY", "Padding top & bottom", () => round(cssOf(`#${s.id}`, "paddingTop"))));
-  }
+  const partStyle = (part) => ({
+    box: `[data-pid="${part.id}"]`,
+    textSel: `[data-pid="${part.id}"] > *`,
+    sizeSel: part.type === "quote" ? `[data-pid="${part.id}"] .quote-text` : part.type === "biglink" ? `[data-pid="${part.id}"] .big-link` : null,
+    text: !NO_TEXT.has(part.type),
+    size: !NO_TEXT.has(part.type),
+  });
+  const sectionStyle = (s) => ({ box: `#${s.id}`, textSel: `#${s.id}`, text: true, size: false });
+  const serviceStyle = (it) => ({ box: `[data-iid="${it.id}"]`, textSel: `[data-iid="${it.id}"] h3`, text: true,
+    sizes: [["titleSize", "Title size", "h3"], ["textSize", "Text size", "p"]] });
+  const linkStyle = (it) => ({ box: `[data-iid="${it.id}"]`, text: true, size: true });
 
   /* ---------- Content fields for each kind of part ---------- */
   const RICH_HINT = "Wrap words in *asterisks* for italic. New line = line break.";
@@ -583,7 +710,7 @@
       h("div", { class: "cms-grid2" }, field(p + "name", "Name"), field(p + "role", "Role / company")),
     ],
     tags: (p) => [field(p + "items", "Tags", { type: "textarea", rows: 2, hint: "Comma-separated." })],
-    links: (p) => [listEditor(p + "items", [["label", "Label"], ["url", "Link", { type: "url" }]], "+ Add link", { label: "", url: "" })],
+    links: (p) => [listEditor(p + "items", [["label", "Label"], ["url", "Link", { type: "url" }]], "+ Add link", { label: "", url: "" }, linkStyle)],
     biglink: (p) => [
       field(p + "text", "Text", { type: "textarea", rows: 2, hint: RICH_HINT }),
       field(p + "link", "Link", { hint: "mailto:you@example.com, a URL or #section-id" }),
@@ -593,7 +720,7 @@
       h("span", { class: "cms-label" }, "Projects"),
       projectsEditor(),
     ],
-    services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" })],
+    services: (p) => [listEditor(p + "items", [["title", "Service"], ["text", "Description", { type: "textarea", rows: 2 }]], "+ Add service", { title: "New service", text: "" }, serviceStyle)],
     spacer: (p) => [field(p + "size", "Height", { type: "select", options: [["s", "Small"], ["m", "Medium"], ["l", "Large"]] })],
   };
 
@@ -815,7 +942,7 @@
           field(p + "look", "Look", { type: "select", options: [["plain", "Plain"], ["hero", "Hero (extra space)"], ["dark", "Dark"], ["card", "Card"]] }),
           field(p + "layout", "Layout", { type: "select", options: [["stack", "One column"], ["split", "Image beside"]],
             onInput: () => { s.side ??= "right"; s.ratio ??= "half"; s.valign ??= "middle"; s.shape ??= "landscape"; s.media ??= ""; setTimeout(() => showSection(s.id, null, { scrollPage: false }), 50); } })),
-        sectionQuickStyle(si, s),
+        styleEditor(`sections.${si}.css`, sectionStyle(s)),
         s.layout === "split" ? h("details", { class: "cms-more-opts", open: !s.media },
           h("summary", {}, "Side image"),
           h("div", { class: "cms-section-body" },
@@ -913,7 +1040,7 @@
       const others = draft.sections.filter((x) => x.id !== s.id && x.layout !== "banner");
       const body = h("div", { class: "cms-part-body", hidden: !isOpen },
         PART_FIELDS[part.type]?.(path) || [],
-        h("div", { class: "cms-style-block" }, h("span", { class: "cms-label" }, "Style"), partQuickStyle(si, j, part)),
+        styleEditor(`sections.${si}.parts.${j}.css`, partStyle(part)),
         others.length ? h("label", { class: "cms-field cms-move-to" }, h("span", {}, "Move to another section"),
           h("select", { onchange: (e) => e.target.value && moveToSection(j, e.target.value) },
             h("option", { value: "" }, "Choose…"),

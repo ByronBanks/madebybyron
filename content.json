@@ -90,18 +90,22 @@
           "type": "services",
           "items": [
             {
+              "id": "i2exmj4",
               "title": "Design & Branding",
               "text": "Identities, logos, packaging and design systems that give a business a clear voice."
             },
             {
+              "id": "ikouei4",
               "title": "Photo & Film",
               "text": "Campaign, product and portrait photography, plus short films and social content."
             },
             {
+              "id": "ik4fyqq",
               "title": "Web & Development",
               "text": "Fast, hand-built websites and digital products — designed and coded in one place."
             },
             {
+              "id": "iq8626z",
               "title": "Studio",
               "text": "End-to-end creative for launches and campaigns, with trusted collaborators when needed."
             }
@@ -173,18 +177,22 @@
           "type": "links",
           "items": [
             {
+              "id": "i4t3bpm",
               "label": "Instagram",
               "url": "#"
             },
             {
+              "id": "iszxqi7",
               "label": "LinkedIn",
               "url": "#"
             },
             {
+              "id": "icuoml8",
               "label": "Vimeo",
               "url": "#"
             },
             {
+              "id": "igurao3",
               "label": "GitHub",
               "url": "#"
             }
