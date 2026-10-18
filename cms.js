@@ -85,22 +85,73 @@
   function setOutlines(on) {
     outlineSwitch.checked = on;
     document.body.classList.toggle("cms-outlines", on && document.body.classList.contains("cms-open"));
-    if (!on) outlineLabel.hidden = true;
+    if (!on) { outlineLabel.hidden = true; closeInspector(); }
     try { localStorage.setItem(OUTLINE_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+  const outlinesOn = () => document.body.classList.contains("cms-outlines");
+
+  // The page element under the pointer (never the editor itself)
+  function pageTarget(e) {
+    const el = e.target.closest?.("main *, .nav *, .footer *, .nav, .footer, main");
+    return el && !el.closest(".cms, .cms-fab, dialog, .cms-outline-label") ? el : null;
   }
 
   // Name the box under the pointer, e.g. "div.card-info"
   document.addEventListener("mouseover", (e) => {
-    if (!document.body.classList.contains("cms-outlines")) return;
-    const el = e.target.closest("main *, .nav *, .footer *, .nav, .footer, main");
-    if (!el || el.closest(".cms, .cms-fab, dialog")) { outlineLabel.hidden = true; return; }
-    const cls = [...el.classList].map((c) => "." + c).join("");
-    outlineLabel.textContent = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + cls;
+    if (!outlinesOn()) return;
+    const el = pageTarget(e);
+    if (!el) { outlineLabel.hidden = true; return; }
+    outlineLabel.textContent = Inspector.describe(el);
     const r = el.getBoundingClientRect();
     outlineLabel.style.left = Math.max(4, r.left) + "px";
     outlineLabel.style.top = Math.max(4, r.top - 22) + "px";
     outlineLabel.hidden = false;
   });
+
+  /* ---------- Inspector: click a box to see all its styles ---------- */
+  let selected = null;
+  let showAllProps = false;
+  const inspectorView = h("div", { class: "cms-body cms-inspector", hidden: true });
+
+  // While outlines are on, a click selects instead of following links or pressing buttons
+  document.addEventListener("click", (e) => {
+    if (!outlinesOn()) return;
+    const el = pageTarget(e);
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    inspect(el);
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) closeInspector(); });
+
+  function inspect(el) {
+    selected?.classList.remove("cms-selected");
+    selected = el;
+    el.classList.add("cms-selected");
+    renderInspector();
+    body.hidden = true;
+    inspectorView.hidden = false;
+    inspectorView.scrollTop = 0;
+    setCollapsed(false);
+  }
+
+  function renderInspector() {
+    if (!selected?.isConnected) return closeInspector();
+    inspectorView.replaceChildren(Inspector.render(selected, {
+      onSelect: inspect,
+      onBack: closeInspector,
+      showAll: showAllProps,
+      onToggleAll: (on) => { showAllProps = on; const top = inspectorView.scrollTop; renderInspector(); inspectorView.scrollTop = top; },
+    }));
+  }
+
+  function closeInspector() {
+    selected?.classList.remove("cms-selected");
+    selected = null;
+    inspectorView.hidden = true;
+    inspectorView.replaceChildren();
+    body.hidden = false;
+  }
 
   const sidebar = h("aside", { class: "cms", "aria-label": "Site editor" },
     h("div", { class: "cms-head" },
@@ -113,6 +164,7 @@
       outlineSwitch,
       h("i", { "aria-hidden": "true" })),
     body,
+    inspectorView,
     h("div", { class: "cms-foot" },
       h("div", { class: "cms-row" },
         status,
@@ -152,6 +204,7 @@
   function closeEditor() {
     document.body.classList.remove("cms-open", "cms-collapsed", "cms-outlines");
     outlineLabel.hidden = true;
+    closeInspector();
     signInBtn.textContent = "Sign in";
   }
 

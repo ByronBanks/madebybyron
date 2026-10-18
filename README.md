@@ -23,5 +23,6 @@ Portfolio site, live at https://bmbc-digital.co.uk/MadeByByron/Website/
 | `script.js` | Draws the page from `content.json` |
 | `content.json` | All text, projects and image paths |
 | `cms.js`, `cms.css` | Sign-in and sidebar editor |
+| `inspector.js` | Click-to-inspect panel (Show outlines → click any box) |
 | `store.js` | Loads/saves content (GitHub API) |
 | `cms-config.js` | Which GitHub repo the editor saves to |
