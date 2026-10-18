@@ -3,11 +3,15 @@
 #
 # Repository secrets needed (Settings → Secrets and variables → Actions):
 #   FTP_SERVER    e.g. ftp.bmbc-digital.co.uk
-#   FTP_USERNAME  a cPanel FTP account whose directory is ONLY the MadeByByron/Website folder
+#   FTP_USERNAME
 #   FTP_PASSWORD
-# Optional repository variables:
-#   FTP_SERVER_DIR  folder to upload into, relative to the FTP account's home (default ./)
+# Repository variables:
+#   FTP_SERVER_DIR  folder to upload into, from the FTP login's home; must end in MadeByByron/Website/
 #   FTP_PROTOCOL    ftps (default) or ftp
+#
+# The FTP login can see the whole hosting account (including other sites), so the
+# deploy refuses to run unless FTP_SERVER_DIR points at this site's own folder.
+# The upload tool only removes files it uploaded itself; it never touches anything else.
 
 name: Deploy to server
 
@@ -24,6 +28,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Make sure we only upload into this site's folder
+        env:
+          DIR: ${{ vars.FTP_SERVER_DIR }}
+        run: |
+          case "$DIR" in
+            *MadeByByron/Website/) echo "Uploading into: $DIR" ;;
+            *) echo "::error::FTP_SERVER_DIR must be set and end in MadeByByron/Website/ (got '$DIR'). Stopping so nothing else on the server is touched."; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v4
 
       - name: Upload over FTP
@@ -33,7 +46,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
-          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}
+          server-dir: ${{ vars.FTP_SERVER_DIR }}
           exclude: |
             **/.git*
             **/.git*/**
